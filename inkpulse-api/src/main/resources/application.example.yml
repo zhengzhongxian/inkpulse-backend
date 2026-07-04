@@ -1,0 +1,139 @@
+spring:
+  application:
+    name: inkpulse
+  servlet:
+    multipart:
+      max-file-size: 250MB
+      max-request-size: 250MB
+  datasource:
+    primary:
+      url: ${DB_PRIMARY_URL:jdbc:postgresql://localhost:5432/enterprise_db}
+      username: ${DB_PRIMARY_USERNAME:postgres}
+      password: ${DB_PRIMARY_PASSWORD:your_password}
+      driver-class-name: org.postgresql.Driver
+    replica:
+      url: ${DB_REPLICA_URL:jdbc:postgresql://localhost:5432/enterprise_db}
+      username: ${DB_REPLICA_USERNAME:postgres}
+      password: ${DB_REPLICA_PASSWORD:your_password}
+      driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:your_redis_password}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+jwt:
+  secret: ${JWT_SECRET:YOUR_SECURE_RANDOM_JWT_SECRET_KEY_MIN_256_BITS_LONG}
+  access-token-ttl: ${JWT_ACCESS_TTL:15}
+  refresh-token-ttl: ${JWT_REFRESH_TTL:43200}
+
+gmail-api:
+  client-id: ${GMAIL_CLIENT_ID:your-gmail-client-id}
+  client-secret: ${GMAIL_CLIENT_SECRET:your-gmail-client-secret}
+  refresh-token: ${GMAIL_REFRESH_TOKEN:your-gmail-refresh-token}
+  sender-name: ${GMAIL_SENDER_NAME:InkPulse}
+  sender-email: ${GMAIL_SENDER_EMAIL:your-sender-email@example.com}
+
+auth:
+  max-failed-attempts: 5
+  lock-duration-minutes: 15
+  otp:
+    email-daily-limit: 5
+    device-hourly-limit: 5
+    email-block-hours: 24
+    device-block-hours: 24
+  mfa:
+    session-ttl-minutes: 3
+    max-attempts: 5
+    push-poll-timeout-seconds: 120
+    verify-base-url: ${MFA_VERIFY_BASE_URL:http://localhost/api/v1/auth/mfa/verify-click}
+
+cache:
+  sections:
+    "[redis:login_attempts]": { key: "login_fail:user:", ttl: 30 }
+    "[redis:otp_limit_email]": { key: "otp:limit:email:", ttl: 1440 }
+    "[redis:otp_limit_device]": { key: "otp:limit:device:", ttl: 60 }
+    "[redis:otp_block_email]": { key: "otp:block:email:", ttl: 1440 }
+    "[redis:otp_block_device]": { key: "otp:block:device:", ttl: 1440 }
+    "[redis:mfa_session]": { key: "mfa_session:", ttl: 3 }
+    "[redis:refresh_tokens]": { key: "rt:", ttl: 43200 }
+    "[redis:user_session]": { key: "user:session:", ttl: 43200 }
+    "[redis:account_lock]": { key: "account_lock:", ttl: 15 }
+    "[redis:blacklisted_tokens]": { key: "bl:", ttl: 15 }
+    "[redis:register_otp_session]": { key: "otp:session:register:", ttl: 15 }
+    "[redis:login_otp_session]": { key: "otp:session:login:", ttl: 15 }
+    "[redis:user_profile]": { key: "user:profile:", ttl: 1440 }
+    "[redis:categories]": { key: "categories:list", ttl: 1440 }
+    "[redis:cart_items]": { key: "user:cart:", ttl: 43200 }
+    "[redis:ghn_provinces]": { key: "ghn:provinces:list", ttl: 43200 }
+    "[redis:ghn_districts]": { key: "ghn:districts:list:", ttl: 43200 }
+    "[redis:ghn_wards]": { key: "ghn:wards:list:", ttl: 43200 }
+    "[redis:author_detail]": { key: "author:detail:", ttl: 1440 }
+    "[redis:book_edition_detail]": { key: "book_edition:detail:", ttl: 1440 }
+    "[redis:publishers]": { key: "publishers:list", ttl: 1440 }
+    "[redis:badge_editions]": { key: "badge:editions:", ttl: 1440 }
+    "[redis:author_editions]": { key: "author:editions:", ttl: 1440 }
+    "[redis:publisher_editions]": { key: "publisher:editions:", ttl: 1440 }
+    "[redis:category_editions]": { key: "category:editions:", ttl: 1440 }
+    "[redis:book_editions]": { key: "book:editions:", ttl: 1440 }
+  lock:
+    category:
+      retry-timeout-seconds: 5
+      retry-interval-ms: 100
+    ghn:
+      retry-timeout-seconds: 5
+      retry-interval-ms: 100
+    publisher:
+      retry-timeout-seconds: 5
+      retry-interval-ms: 100
+
+ghn:
+  api-token: ${GHN_API_TOKEN:your-ghn-api-token}
+  base-url: ${GHN_BASE_URL:https://dev-online-gateway.ghn.vn}
+
+logging:
+  level:
+    com.inkpulse: DEBUG
+    org.springframework.security: INFO
+
+app:
+  env: ${APP_ENV:dev}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET_NAME:books}
+
+storage:
+  public-url: ${STORAGE_PUBLIC_URL:images.inkpulse.com}
+  pdf-public-url: ${STORAGE_PDF_PUBLIC_URL:pdf.inkpulse.com}
