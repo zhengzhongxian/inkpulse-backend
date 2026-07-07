@@ -1,7 +1,7 @@
 package com.inkpulse.features.badge.queries;
 
 import com.inkpulse.cqrs.Query;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

@@ -13,7 +13,7 @@ import com.inkpulse.entities.*;
 import com.inkpulse.features.book.commands.UpdateBookCommand;
 import com.inkpulse.cache.CacheProperties;
 import com.inkpulse.cache.ICacheService;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.features.book.dto.SyncBookEditionMessage;
 import com.inkpulse.repositories.*;
 import com.inkpulse.service.minio.IMinioService;
@@ -232,7 +232,10 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                                                         : null)
                                         .pageCount(edition.getPageCount())
                                         .publicationYear(edition.getPublicationYear())
-                                        .dimensions(edition.getDimensions())
+                                        .widthCm(edition.getWidthCm())
+                                        .heightCm(edition.getHeightCm())
+                                        .lengthCm(edition.getLengthCm())
+                                        .weightGram(edition.getWeightGram())
                                         .language(edition.getLanguage())
                                         .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName()
                                                         : null)

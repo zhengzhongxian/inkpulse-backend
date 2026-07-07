@@ -2,7 +2,7 @@ package com.inkpulse.features.publisher.handlers;
 
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Publisher;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.features.publisher.queries.GetPagedPublishersQuery;
 import com.inkpulse.models.pagination.PagedList;
 import com.inkpulse.repositories.PublisherRepository;
@@ -28,9 +28,11 @@ public class GetPagedPublishersQueryHandler implements Query.QueryHandler<GetPag
         log.info("Handling GetPagedPublishersQuery: page={}, size={}, search={}",
                 query.getPageNumber(), query.getPageSize(), query.getSearchKeyword());
 
-        int pageIndex = Math.max(0, query.getPageNumber() - 1);
-        int size = query.getPageSize();
-        Pageable pageable = PageRequest.of(pageIndex, size, Sort.by("name").ascending());
+        if (query.getSortBy() == null || query.getSortBy().isBlank()) {
+            query.setSortBy("name");
+            query.setSortDirection("asc");
+        }
+        Pageable pageable = query.toPageable();
 
         Page<Publisher> page;
         if (query.getSearchKeyword() != null && !query.getSearchKeyword().isBlank()) {

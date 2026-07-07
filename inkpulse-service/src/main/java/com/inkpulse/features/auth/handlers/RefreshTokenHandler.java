@@ -8,7 +8,7 @@ import com.inkpulse.features.auth.commands.RefreshTokenCommand;
 import com.inkpulse.features.auth.service.TokenService;
 import com.inkpulse.features.auth.service.TokenService.RotationResult;
 import com.inkpulse.features.auth.service.TokenService.RotationStatus;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import com.inkpulse.repositories.UserRepository;
 import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.RequiredArgsConstructor;

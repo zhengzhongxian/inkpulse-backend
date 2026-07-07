@@ -12,7 +12,7 @@ import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.*;
 import com.inkpulse.features.book.commands.UpdateBookEditionCommand;
-import com.inkpulse.features.book.dto.BookEditionResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
 import com.inkpulse.constants.QueueConstants;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import com.inkpulse.entities.enums.CoverType;
@@ -110,9 +110,10 @@ public class UpdateBookEditionCommandHandler
         if (cmd.getPublicationYear() != null) {
             edition.setPublicationYear(cmd.getPublicationYear());
         }
-        if (cmd.getDimensions() != null) {
-            edition.setDimensions(cmd.getDimensions());
-        }
+        edition.setWidthCm(cmd.getWidthCm());
+        edition.setHeightCm(cmd.getHeightCm());
+        edition.setLengthCm(cmd.getLengthCm());
+        edition.setWeightGram(cmd.getWeightGram());
         if (cmd.getLanguage() != null) {
             edition.setLanguage(cmd.getLanguage());
         }
@@ -356,7 +357,10 @@ public class UpdateBookEditionCommandHandler
                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                 .pageCount(edition.getPageCount())
                 .publicationYear(edition.getPublicationYear())
-                .dimensions(edition.getDimensions())
+                .widthCm(edition.getWidthCm())
+                .heightCm(edition.getHeightCm())
+                .lengthCm(edition.getLengthCm())
+                .weightGram(edition.getWeightGram())
                 .language(edition.getLanguage())
                 .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
                 .authorName(authorNameJoined)
@@ -436,7 +440,10 @@ public class UpdateBookEditionCommandHandler
                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                 .pageCount(edition.getPageCount())
                 .publicationYear(edition.getPublicationYear())
-                .dimensions(edition.getDimensions())
+                .widthCm(edition.getWidthCm())
+                .heightCm(edition.getHeightCm())
+                .lengthCm(edition.getLengthCm())
+                .weightGram(edition.getWeightGram())
                 .language(edition.getLanguage())
                 .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
                 .build();

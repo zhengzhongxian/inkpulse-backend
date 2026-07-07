@@ -11,8 +11,8 @@ import com.inkpulse.corehelpers.UrlHelper;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Book;
 import com.inkpulse.entities.BookEdition;
-import com.inkpulse.features.book.dto.BookEditionResponse;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.features.book.elastic.BookEditionDocument;
 import com.inkpulse.features.book.queries.GetBooksQuery;
 import com.inkpulse.models.pagination.PagedList;
@@ -181,7 +181,10 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
                                     .coverType(vDoc.getCoverType())
                                     .pageCount(vDoc.getPageCount())
                                     .publicationYear(vDoc.getPublicationYear())
-                                    .dimensions(vDoc.getDimensions())
+                                    .widthCm(vDoc.getWidthCm())
+                                    .heightCm(vDoc.getHeightCm())
+                                    .lengthCm(vDoc.getLengthCm())
+                                    .weightGram(vDoc.getWeightGram())
                                     .language(vDoc.getLanguage())
                                     .publisherName(vDoc.getPublisherName())
                                     .build());
@@ -202,25 +205,24 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
     }
 
     private PagedList<BookResponse> fallbackToDatabase(GetBooksQuery query) {
-        int pageIndex = Math.max(0, query.getPageNumber() - 1);
-        int size = query.getPageSize();
-
-        Sort sort;
         if (query.getSortBy() != null && !query.getSortBy().trim().isEmpty()) {
             String cleanSort = query.getSortBy().trim();
             if ("price".equalsIgnoreCase(cleanSort)) {
-                cleanSort = "be.price";
+                query.setSortBy("be.price");
             } else if ("stock".equalsIgnoreCase(cleanSort)) {
-                cleanSort = "be.stockQuantity";
+                query.setSortBy("be.stockQuantity");
             }
-            Sort.Direction direction = "desc".equalsIgnoreCase(query.getSortDirection()) ? Sort.Direction.DESC
-                    : Sort.Direction.ASC;
-            sort = Sort.by(direction, cleanSort).and(Sort.by(Sort.Direction.ASC, "id"));
         } else {
-            sort = Sort.by(Sort.Direction.DESC, "updatedAt").and(Sort.by(Sort.Direction.ASC, "id"));
+            query.setSortBy("updatedAt");
+            query.setSortDirection("desc");
         }
 
-        Pageable pageable = PageRequest.of(pageIndex, size, sort);
+        Pageable basePageable = query.toPageable();
+        Pageable pageable = PageRequest.of(
+                basePageable.getPageNumber(),
+                basePageable.getPageSize(),
+                basePageable.getSort().and(Sort.by(Sort.Direction.ASC, "id"))
+        );
 
         String categorySlug = query.getCategorySlug();
         if (categorySlug != null && (categorySlug.equalsIgnoreCase("all") || categorySlug.equalsIgnoreCase("tat-ca") || categorySlug.trim().isEmpty())) {

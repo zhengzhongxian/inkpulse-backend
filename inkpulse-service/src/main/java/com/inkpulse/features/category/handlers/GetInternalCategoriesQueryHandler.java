@@ -2,7 +2,7 @@ package com.inkpulse.features.category.handlers;
 
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Category;
-import com.inkpulse.models.response.CategoryResponse;
+import com.inkpulse.models.response.category.CategoryResponse;
 import com.inkpulse.features.category.queries.GetInternalCategoriesQuery;
 import com.inkpulse.repositories.CategoryRepository;
 import lombok.RequiredArgsConstructor;

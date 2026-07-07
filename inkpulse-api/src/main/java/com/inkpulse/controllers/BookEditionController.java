@@ -8,9 +8,9 @@ import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.features.book.commands.CreateBookEditionCommand;
 import com.inkpulse.features.book.commands.UpdateBookEditionCommand;
 import com.inkpulse.features.book.commands.DeleteBookEditionCommand;
-import com.inkpulse.features.book.dto.BookEditionResponse;
-import com.inkpulse.features.book.dto.PublicBookEditionDetailResponse;
-import com.inkpulse.features.book.dto.InternalBookEditionDetailResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.PublicBookEditionDetailResponse;
+import com.inkpulse.models.response.book.InternalBookEditionDetailResponse;
 import com.inkpulse.features.book.queries.GetPublicBookEditionDetailQuery;
 import com.inkpulse.features.book.queries.GetInternalBookEditionDetailQuery;
 import com.inkpulse.models.response.ResultRes;
@@ -50,7 +50,10 @@ public class BookEditionController {
             @RequestParam(value = "coverType", required = false) String coverType,
             @RequestParam(value = "pageCount", required = false) Integer pageCount,
             @RequestParam(value = "publicationYear", required = false) Integer publicationYear,
-            @RequestParam(value = "dimensions", required = false) String dimensions,
+            @RequestParam(value = "weightGram", required = false) Integer weightGram,
+            @RequestParam(value = "widthCm", required = false) Integer widthCm,
+            @RequestParam(value = "heightCm", required = false) Integer heightCm,
+            @RequestParam(value = "lengthCm", required = false) Integer lengthCm,
             @RequestParam(value = "language", required = false) String language,
             @RequestParam(value = "publisherId", required = false) UUID publisherId,
             @RequestParam(value = "badgeIds", required = false) List<String> badgeIds,
@@ -127,7 +130,10 @@ public class BookEditionController {
                 .coverType(coverType)
                 .pageCount(pageCount)
                 .publicationYear(publicationYear)
-                .dimensions(dimensions)
+                .weightGram(weightGram != null ? weightGram : 0)
+                .widthCm(widthCm != null ? widthCm : 0)
+                .heightCm(heightCm != null ? heightCm : 0)
+                .lengthCm(lengthCm != null ? lengthCm : 0)
                 .language(language)
                 .publisherId(publisherId)
                 .badgeIds(badgeUuids)
@@ -176,7 +182,10 @@ public class BookEditionController {
             @RequestParam(value = "coverType", required = false) String coverType,
             @RequestParam(value = "pageCount", required = false) Integer pageCount,
             @RequestParam(value = "publicationYear", required = false) Integer publicationYear,
-            @RequestParam(value = "dimensions", required = false) String dimensions,
+            @RequestParam(value = "weightGram", required = false) Integer weightGram,
+            @RequestParam(value = "widthCm", required = false) Integer widthCm,
+            @RequestParam(value = "heightCm", required = false) Integer heightCm,
+            @RequestParam(value = "lengthCm", required = false) Integer lengthCm,
             @RequestParam(value = "language", required = false) String language,
             @RequestParam(value = "publisherId", required = false) UUID publisherId,
             @RequestParam(value = "badgeIds", required = false) List<String> badgeIds,
@@ -255,7 +264,10 @@ public class BookEditionController {
                 .coverType(coverType)
                 .pageCount(pageCount)
                 .publicationYear(publicationYear)
-                .dimensions(dimensions)
+                .weightGram(weightGram)
+                .widthCm(widthCm)
+                .heightCm(heightCm)
+                .lengthCm(lengthCm)
                 .language(language)
                 .publisherId(publisherId)
                 .badgeIds(badgeUuids)

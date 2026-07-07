@@ -9,7 +9,7 @@ import com.inkpulse.entities.enums.Language;
 import com.inkpulse.features.auth.service.MfaService;
 import com.inkpulse.features.auth.service.TokenService;
 import com.inkpulse.features.auth.commands.VerifyMfaCommand;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import com.inkpulse.features.auth.dto.MfaVerificationSessionDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

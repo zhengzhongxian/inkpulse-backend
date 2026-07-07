@@ -64,8 +64,8 @@ public class ResultRes<T> {
                 .build();
     }
 
-    public static ResultRes<Object> errorResult(String message, int statusCode, List<String> errors) {
-        return ResultRes.builder()
+    public static <T> ResultRes<T> errorResult(String message, int statusCode, List<String> errors) {
+        return ResultRes.<T>builder()
                 .success(false)
                 .message(message)
                 .data(null)

@@ -11,8 +11,8 @@ import com.inkpulse.constants.message.BookMessageConstants;
 import com.inkpulse.corehelpers.UrlHelper;
 import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Query;
-import com.inkpulse.features.book.dto.BookEditionResponse;
-import com.inkpulse.features.book.dto.PublicBookEditionDetailResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.PublicBookEditionDetailResponse;
 import com.inkpulse.features.book.elastic.BookEditionDocument;
 import com.inkpulse.features.book.queries.GetPublicBookEditionDetailQuery;
 import lombok.RequiredArgsConstructor;
@@ -143,7 +143,10 @@ public class GetPublicBookEditionDetailQueryHandler
                 .coverType(doc.getCoverType())
                 .pageCount(doc.getPageCount())
                 .publicationYear(doc.getPublicationYear())
-                .dimensions(doc.getDimensions())
+                .widthCm(doc.getWidthCm())
+                .heightCm(doc.getHeightCm())
+                .lengthCm(doc.getLengthCm())
+                .weightGram(doc.getWeightGram())
                 .language(doc.getLanguage())
                 .publisherName(doc.getPublisherName())
                 .imageUrls(absoluteImageUrls)
@@ -240,7 +243,10 @@ public class GetPublicBookEditionDetailQueryHandler
                             .coverType(item.getCoverType())
                             .pageCount(item.getPageCount())
                             .publicationYear(item.getPublicationYear())
-                            .dimensions(item.getDimensions())
+                            .widthCm(item.getWidthCm())
+                            .heightCm(item.getHeightCm())
+                            .lengthCm(item.getLengthCm())
+                            .weightGram(item.getWeightGram())
                             .language(item.getLanguage())
                             .publisherName(item.getPublisherName())
                             .build();

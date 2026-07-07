@@ -4,7 +4,7 @@ import com.inkpulse.constants.message.PublisherMessageConstants;
 import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Publisher;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.features.publisher.queries.GetPublisherByIdQuery;
 import com.inkpulse.repositories.PublisherRepository;
 import lombok.RequiredArgsConstructor;

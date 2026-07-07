@@ -20,7 +20,8 @@ public class UserAddress extends BaseAuditableEntity<UUID> {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "recipient_phone", nullable = false, length = 20)
+    @Convert(converter = AesEncryptConverter.class)
+    @Column(name = "recipient_phone", nullable = false, length = 255)
     private String recipientPhone;
 
     @ManyToOne(fetch = FetchType.LAZY)

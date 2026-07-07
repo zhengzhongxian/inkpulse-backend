@@ -3,7 +3,7 @@ package com.inkpulse.features.badge.handlers;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Badge;
 import com.inkpulse.features.badge.commands.CreateBadgeCommand;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import com.inkpulse.repositories.BadgeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -24,6 +24,7 @@ public record UserProfileCacheDto(
     String choiceLanguage,
     boolean mfaEnabled,
     List<String> mfaTypes,
+    Long coinBalance,
     List<UserAddressCacheDto> addresses
 ) implements Cacheable {
     @Override

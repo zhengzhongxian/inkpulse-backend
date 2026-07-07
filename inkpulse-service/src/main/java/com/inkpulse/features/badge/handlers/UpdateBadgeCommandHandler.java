@@ -9,7 +9,7 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.*;
 import com.inkpulse.features.badge.commands.UpdateBadgeCommand;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import com.inkpulse.features.book.dto.SyncBookEditionMessage;
 import com.inkpulse.repositories.BadgeRepository;
 import com.inkpulse.repositories.BookEditionRepository;
@@ -158,7 +158,10 @@ public class UpdateBadgeCommandHandler implements Command.CommandHandler<UpdateB
                                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                                 .pageCount(edition.getPageCount())
                                 .publicationYear(edition.getPublicationYear())
-                                .dimensions(edition.getDimensions())
+                                .widthCm(edition.getWidthCm())
+                                .heightCm(edition.getHeightCm())
+                                .lengthCm(edition.getLengthCm())
+                                .weightGram(edition.getWeightGram())
                                 .language(edition.getLanguage())
                                 .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
                                 .authorName(authorNameJoined)

@@ -10,7 +10,7 @@ import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.*;
 import com.inkpulse.features.book.commands.CreateBookEditionCommand;
-import com.inkpulse.features.book.dto.BookEditionResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
 import com.inkpulse.constants.QueueConstants;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import com.inkpulse.entities.enums.CoverType;
@@ -88,6 +88,10 @@ public class CreateBookEditionCommandHandler
         // merge issues)
         BookEdition edition = BookEdition.builder()
                 .book(book)
+                .widthCm(cmd.getWidthCm())
+                .heightCm(cmd.getHeightCm())
+                .lengthCm(cmd.getLengthCm())
+                .weightGram(cmd.getWeightGram())
                 .isbn(cmd.getIsbn())
                 .price(cmd.getPrice())
                 .oldPrice(cmd.getOldPrice())
@@ -97,7 +101,6 @@ public class CreateBookEditionCommandHandler
                         cmd.getCoverType() != null ? CoverType.valueOf(cmd.getCoverType().trim().toUpperCase()) : null)
                 .pageCount(cmd.getPageCount())
                 .publicationYear(cmd.getPublicationYear())
-                .dimensions(cmd.getDimensions())
                 .language(cmd.getLanguage())
                 .publisher(publisher)
                 .build();
@@ -303,7 +306,10 @@ public class CreateBookEditionCommandHandler
                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                 .pageCount(edition.getPageCount())
                 .publicationYear(edition.getPublicationYear())
-                .dimensions(edition.getDimensions())
+                .widthCm(edition.getWidthCm())
+                .heightCm(edition.getHeightCm())
+                .lengthCm(edition.getLengthCm())
+                .weightGram(edition.getWeightGram())
                 .language(edition.getLanguage())
                 .publisherName(publisher != null ? publisher.getName() : null)
                 .authorName(authorNameJoined)
@@ -385,7 +391,10 @@ public class CreateBookEditionCommandHandler
                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                 .pageCount(edition.getPageCount())
                 .publicationYear(edition.getPublicationYear())
-                .dimensions(edition.getDimensions())
+                .widthCm(edition.getWidthCm())
+                .heightCm(edition.getHeightCm())
+                .lengthCm(edition.getLengthCm())
+                .weightGram(edition.getWeightGram())
                 .language(edition.getLanguage())
                 .publisherName(publisher != null ? publisher.getName() : null)
                 .build();

@@ -5,7 +5,7 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Publisher;
 import com.inkpulse.features.publisher.commands.CreatePublisherCommand;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.repositories.PublisherRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

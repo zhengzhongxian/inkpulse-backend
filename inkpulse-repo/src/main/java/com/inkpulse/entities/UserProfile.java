@@ -48,6 +48,10 @@ public class UserProfile extends BaseEntity<java.util.UUID> {
     @Column(name = "timezone", length = 100)
     private String timezone;
 
+    @Column(name = "coin_balance", nullable = false)
+    @Builder.Default
+    private Long coinBalance = 0L;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

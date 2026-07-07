@@ -2,7 +2,7 @@ package com.inkpulse.features.auth.commands;
 
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.User;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import lombok.Getter;
 import lombok.Setter;
 

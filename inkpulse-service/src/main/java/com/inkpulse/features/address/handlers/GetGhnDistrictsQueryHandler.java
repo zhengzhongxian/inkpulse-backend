@@ -2,7 +2,7 @@ package com.inkpulse.features.address.handlers;
 
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.GhnDistrict;
-import com.inkpulse.models.response.GhnDistrictResponse;
+import com.inkpulse.models.response.ghn.GhnDistrictResponse;
 import com.inkpulse.features.address.queries.GetGhnDistrictsQuery;
 import com.inkpulse.repositories.GhnDistrictRepository;
 import com.inkpulse.cache.ICacheService;

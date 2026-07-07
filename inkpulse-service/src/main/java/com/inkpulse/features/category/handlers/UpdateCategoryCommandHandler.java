@@ -10,7 +10,7 @@ import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Category;
 import com.inkpulse.features.category.commands.UpdateCategoryCommand;
 import com.inkpulse.features.category.dto.SyncCategorySlugMessage;
-import com.inkpulse.models.response.CategoryResponse;
+import com.inkpulse.models.response.category.CategoryResponse;
 import com.inkpulse.repositories.CategoryRepository;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import lombok.RequiredArgsConstructor;

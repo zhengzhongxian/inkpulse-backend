@@ -10,7 +10,7 @@ import com.inkpulse.entities.enums.*;
 import com.inkpulse.features.auth.commands.VerifyRegisterCommand;
 import com.inkpulse.features.auth.dto.*;
 import com.inkpulse.features.auth.service.TokenService;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import com.inkpulse.repositories.*;
 import com.inkpulse.cqrs.Command;
 import lombok.RequiredArgsConstructor;

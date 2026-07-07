@@ -1,7 +1,7 @@
 package com.inkpulse.features.badge.handlers;
 
 import com.inkpulse.cqrs.Query;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import com.inkpulse.features.badge.queries.GetBadgesQuery;
 import com.inkpulse.repositories.BadgeRepository;
 import lombok.RequiredArgsConstructor;

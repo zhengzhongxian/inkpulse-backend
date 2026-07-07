@@ -29,7 +29,10 @@ public class SyncBookEditionMessage {
     private String coverType;
     private Integer pageCount;
     private Integer publicationYear;
-    private String dimensions;
+    private int weightGram;
+    private int widthCm;
+    private int heightCm;
+    private int lengthCm;
     private String language;
     private String publisherName;
     private String authorName;

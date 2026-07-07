@@ -6,7 +6,7 @@ import com.inkpulse.constants.message.BadgeMessageConstants;
 import com.inkpulse.features.badge.commands.CreateBadgeCommand;
 import com.inkpulse.features.badge.commands.UpdateBadgeCommand;
 import com.inkpulse.features.badge.commands.DeleteBadgeCommand;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import com.inkpulse.features.badge.queries.GetBadgeByIdQuery;
 import com.inkpulse.features.badge.queries.GetBadgesQuery;
 import com.inkpulse.models.response.ResultRes;

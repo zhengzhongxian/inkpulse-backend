@@ -2,7 +2,7 @@ package com.inkpulse.features.author.commands;
 
 import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
-import com.inkpulse.features.author.dto.AuthorResponse;
+import com.inkpulse.models.response.author.AuthorResponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

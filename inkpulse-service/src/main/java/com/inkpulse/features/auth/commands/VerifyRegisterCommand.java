@@ -1,7 +1,7 @@
 package com.inkpulse.features.auth.commands;
 
 import com.inkpulse.cqrs.Command;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import lombok.Getter;
 import java.time.LocalDate;
 

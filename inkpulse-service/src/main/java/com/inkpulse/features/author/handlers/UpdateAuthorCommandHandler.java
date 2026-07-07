@@ -14,7 +14,7 @@ import com.inkpulse.entities.BookEdition;
 import com.inkpulse.entities.Category;
 import com.inkpulse.entities.EditionImage;
 import com.inkpulse.features.author.commands.UpdateAuthorCommand;
-import com.inkpulse.features.author.dto.AuthorResponse;
+import com.inkpulse.models.response.author.AuthorResponse;
 import com.inkpulse.cache.CacheProperties;
 import com.inkpulse.cache.ICacheService;
 import com.inkpulse.constants.QueueConstants;
@@ -170,7 +170,10 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
                             .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                             .pageCount(edition.getPageCount())
                             .publicationYear(edition.getPublicationYear())
-                            .dimensions(edition.getDimensions())
+                            .widthCm(edition.getWidthCm())
+                            .heightCm(edition.getHeightCm())
+                            .lengthCm(edition.getLengthCm())
+                            .weightGram(edition.getWeightGram())
                             .language(edition.getLanguage())
                             .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
                             .authorName(authorNameJoined)

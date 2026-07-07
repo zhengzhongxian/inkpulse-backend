@@ -7,8 +7,8 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.BookEdition;
 import com.inkpulse.entities.EditionImage;
-import com.inkpulse.features.book.dto.BookEditionResponse;
-import com.inkpulse.features.book.dto.InternalBookEditionDetailResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.InternalBookEditionDetailResponse;
 import com.inkpulse.features.book.queries.GetInternalBookEditionDetailQuery;
 import com.inkpulse.repositories.BookEditionRepository;
 import lombok.RequiredArgsConstructor;
@@ -82,7 +82,10 @@ public class GetInternalBookEditionDetailQueryHandler implements Query.QueryHand
                 .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                 .pageCount(edition.getPageCount())
                 .publicationYear(edition.getPublicationYear())
-                .dimensions(edition.getDimensions())
+                .widthCm(edition.getWidthCm())
+                .heightCm(edition.getHeightCm())
+                .lengthCm(edition.getLengthCm())
+                .weightGram(edition.getWeightGram())
                 .language(edition.getLanguage())
                 .filePathPdf(edition.getFilePathPdf())
                 .filePathPdfUrl(UrlHelper.buildAbsoluteUrl(pdfPublicUrl, edition.getFilePathPdf(), useSsl))

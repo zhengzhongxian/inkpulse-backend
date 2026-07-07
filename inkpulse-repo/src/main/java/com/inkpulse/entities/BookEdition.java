@@ -65,8 +65,21 @@ public class BookEdition extends BaseAuditableEntity<UUID> {
     @Column(name = "publication_year")
     private Integer publicationYear;
 
-    @Column(name = "dimensions", length = 100)
-    private String dimensions;
+    @Column(name = "weight_gram", nullable = false)
+    @Builder.Default
+    private int weightGram = 500;
+
+    @Column(name = "width_cm", nullable = false)
+    @Builder.Default
+    private int widthCm = 20;
+
+    @Column(name = "height_cm", nullable = false)
+    @Builder.Default
+    private int heightCm = 3;
+
+    @Column(name = "length_cm", nullable = false)
+    @Builder.Default
+    private int lengthCm = 15;
 
     @Column(name = "language", length = 50)
     private String language;

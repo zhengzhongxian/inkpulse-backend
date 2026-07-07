@@ -1,7 +1,7 @@
 package com.inkpulse.features.book.queries;
 
 import com.inkpulse.cqrs.Query;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.models.pagination.PagedList;
 import com.inkpulse.models.pagination.PagedRequest;
 import lombok.Getter;

@@ -1,7 +1,7 @@
 package com.inkpulse.features.author.queries;
 
 import com.inkpulse.cqrs.Query;
-import com.inkpulse.features.author.dto.AuthorDetailResponse;
+import com.inkpulse.models.response.author.AuthorDetailResponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

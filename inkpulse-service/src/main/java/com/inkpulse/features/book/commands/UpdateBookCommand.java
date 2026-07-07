@@ -2,7 +2,7 @@ package com.inkpulse.features.book.commands;
 
 import com.inkpulse.constants.message.BookMessageConstants;
 import com.inkpulse.cqrs.Command;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;

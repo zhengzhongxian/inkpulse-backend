@@ -9,7 +9,7 @@ import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.*;
 import com.inkpulse.features.book.commands.CreateBookCommand;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.service.minio.IMinioService;
 import com.inkpulse.repositories.*;
 import lombok.RequiredArgsConstructor;

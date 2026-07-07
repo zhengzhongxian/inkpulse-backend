@@ -6,7 +6,7 @@ import com.inkpulse.constants.message.PublisherMessageConstants;
 import com.inkpulse.features.publisher.commands.CreatePublisherCommand;
 import com.inkpulse.features.publisher.commands.UpdatePublisherCommand;
 import com.inkpulse.features.publisher.commands.DeletePublisherCommand;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.features.publisher.queries.GetPublisherByIdQuery;
 import com.inkpulse.features.publisher.queries.GetPublishersQuery;
 import com.inkpulse.features.publisher.queries.GetPagedPublishersQuery;

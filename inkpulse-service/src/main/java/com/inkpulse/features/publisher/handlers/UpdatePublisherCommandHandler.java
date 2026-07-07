@@ -9,7 +9,7 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Publisher;
 import com.inkpulse.features.publisher.commands.UpdatePublisherCommand;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.features.publisher.dto.SyncPublisherNameMessage;
 import com.inkpulse.repositories.PublisherRepository;
 import com.inkpulse.service.outbox.OutboxPublisher;

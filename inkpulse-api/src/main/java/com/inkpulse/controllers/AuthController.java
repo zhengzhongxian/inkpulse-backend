@@ -2,21 +2,30 @@ package com.inkpulse.controllers;
 
 import an.awesome.pipelinr.Pipeline;
 import com.inkpulse.models.response.ResultRes;
-import com.inkpulse.models.response.LoginResult;
-import com.inkpulse.models.response.MfaStatusResponse;
-import com.inkpulse.models.request.LoginRequest;
-import com.inkpulse.models.request.SendOtpRequest;
-import com.inkpulse.models.request.VerifyMfaRequest;
-import com.inkpulse.models.request.InitiatePushRequest;
-import com.inkpulse.models.request.ApprovePushRequest;
-import com.inkpulse.models.request.RefreshTokenRequest;
-import com.inkpulse.models.request.LogoutRequest;
-import com.inkpulse.models.request.SendRegisterOtpRequest;
-import com.inkpulse.models.request.VerifyRegisterRequest;
+import com.inkpulse.models.response.auth.LoginResult;
+import com.inkpulse.models.response.auth.MfaStatusResponse;
+import com.inkpulse.models.request.auth.LoginRequest;
+import com.inkpulse.models.request.auth.SendOtpRequest;
+import com.inkpulse.models.request.auth.VerifyMfaRequest;
+import com.inkpulse.models.request.auth.InitiatePushRequest;
+import com.inkpulse.models.request.auth.ApprovePushRequest;
+import com.inkpulse.models.request.auth.RefreshTokenRequest;
+import com.inkpulse.models.request.auth.LogoutRequest;
+import com.inkpulse.models.request.auth.SendRegisterOtpRequest;
+import com.inkpulse.models.request.auth.VerifyRegisterRequest;
 import com.inkpulse.features.auth.service.MfaService;
 import com.inkpulse.features.auth.commands.LoginCommand;
 import com.inkpulse.features.auth.commands.InternalLoginCommand;
 import com.inkpulse.models.request.InternalLoginRequest;
+import com.inkpulse.features.auth.commands.ForgotPasswordCommand;
+import com.inkpulse.features.auth.commands.ResetPasswordCommand;
+import com.inkpulse.features.auth.commands.GoogleLoginCommand;
+import com.inkpulse.features.auth.commands.GoogleRegisterCommand;
+import com.inkpulse.models.request.auth.ForgotPasswordRequest;
+import com.inkpulse.models.request.auth.ResetPasswordRequest;
+import com.inkpulse.models.request.auth.GoogleLoginRequest;
+import com.inkpulse.models.request.auth.GoogleRegisterRequest;
+import com.inkpulse.models.response.auth.GoogleLoginResult;
 import com.inkpulse.features.auth.commands.LogoutCommand;
 import com.inkpulse.features.auth.commands.RefreshTokenCommand;
 import com.inkpulse.features.auth.commands.VerifyMfaCommand;
@@ -276,6 +285,79 @@ public class AuthController {
         pipeline.send(cmd);
 
         return ResponseEntity.ok(ResultRes.successResult(TokenMessageConstants.REVOKED, 200));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ResultRes<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        ForgotPasswordCommand cmd = new ForgotPasswordCommand(
+                request.getEmail(),
+                request.getDeviceId(),
+                request.getBrowserFingerprint()
+        );
+        pipeline.send(cmd);
+        return ResponseEntity.ok(ResultRes.successResult(null, AuthMessageConstants.FORGOT_PASSWORD_EMAIL_SENT, 200));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ResultRes<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        ResetPasswordCommand cmd = new ResetPasswordCommand(
+                request.getToken(),
+                request.getNewPassword(),
+                request.getConfirmPassword()
+        );
+        pipeline.send(cmd);
+        return ResponseEntity.ok(ResultRes.successResult(null, AuthMessageConstants.RESET_PASSWORD_SUCCESS, 200));
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<ResultRes<GoogleLoginResult>> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request,
+            HttpServletRequest httpRequest) {
+        String clientIp = getClientIp(httpRequest);
+        GoogleLoginCommand cmd = GoogleLoginCommand.builder()
+                .idToken(request.getIdToken())
+                .deviceId(request.getDeviceId())
+                .browserFingerprint(request.getBrowserFingerprint())
+                .deviceName(request.getDeviceName())
+                .deviceType(request.getDeviceType())
+                .clientIp(clientIp)
+                .build();
+        GoogleLoginResult result = pipeline.send(cmd);
+        return ResponseEntity.ok(ResultRes.successResult(result));
+    }
+
+    @PostMapping("/google/register")
+    public ResponseEntity<ResultRes<LoginResult>> googleRegister(
+            @Valid @RequestBody GoogleRegisterRequest request,
+            HttpServletRequest httpRequest) {
+        String clientIp = getClientIp(httpRequest);
+        GoogleRegisterCommand cmd = GoogleRegisterCommand.builder()
+                .googleUserId(request.getGoogleUserId())
+                .email(request.getEmail())
+                .name(request.getName())
+                .picture(request.getPicture())
+                .username(request.getUsername())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .gender(request.getGender())
+                .dob(request.getDob())
+                .choiceLanguage(request.getChoiceLanguage())
+                .deviceId(request.getDeviceId())
+                .deviceName(request.getDeviceName())
+                .deviceType(request.getDeviceType())
+                .browserFingerprint(request.getBrowserFingerprint())
+                .clientIp(clientIp)
+                .recipientPhone(request.getRecipientPhone())
+                .provinceId(request.getProvinceId())
+                .districtId(request.getDistrictId())
+                .wardCode(request.getWardCode())
+                .streetAddress(request.getStreetAddress())
+                .addressLabel(request.getAddressLabel())
+                .build();
+        LoginResult result = pipeline.send(cmd);
+        return ResponseEntity.ok(ResultRes.successResult(result, RegisterMessageConstants.SUCCESS, 200));
     }
 
     private String getClientIp(HttpServletRequest request) {

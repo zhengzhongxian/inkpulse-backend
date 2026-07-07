@@ -4,7 +4,7 @@ import com.inkpulse.constants.message.BadgeMessageConstants;
 import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Badge;
-import com.inkpulse.features.badge.dto.BadgeResponse;
+import com.inkpulse.models.response.badge.BadgeResponse;
 import com.inkpulse.features.badge.queries.GetBadgeByIdQuery;
 import com.inkpulse.repositories.BadgeRepository;
 import lombok.RequiredArgsConstructor;

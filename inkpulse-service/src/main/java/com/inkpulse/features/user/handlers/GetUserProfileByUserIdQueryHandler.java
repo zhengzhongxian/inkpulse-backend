@@ -106,6 +106,7 @@ public class GetUserProfileByUserIdQueryHandler implements Query.QueryHandler<Ge
                 choiceLanguage,
                 user.isMfaEnabled(),
                 mfaTypes,
+                profile.getCoinBalance(),
                 addressDtos
         );
 

@@ -6,7 +6,7 @@ import com.inkpulse.features.category.commands.CreateCategoryCommand;
 import com.inkpulse.features.category.commands.UpdateCategoryCommand;
 import com.inkpulse.features.category.commands.DeleteCategoryCommand;
 import com.inkpulse.features.category.queries.GetInternalCategoriesQuery;
-import com.inkpulse.models.response.CategoryResponse;
+import com.inkpulse.models.response.category.CategoryResponse;
 import com.inkpulse.features.category.queries.GetCategoriesQuery;
 import com.inkpulse.models.response.ResultRes;
 import lombok.RequiredArgsConstructor;

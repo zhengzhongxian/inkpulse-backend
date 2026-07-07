@@ -8,7 +8,7 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Category;
 import com.inkpulse.features.category.commands.CreateCategoryCommand;
-import com.inkpulse.models.response.CategoryResponse;
+import com.inkpulse.models.response.category.CategoryResponse;
 import com.inkpulse.repositories.CategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

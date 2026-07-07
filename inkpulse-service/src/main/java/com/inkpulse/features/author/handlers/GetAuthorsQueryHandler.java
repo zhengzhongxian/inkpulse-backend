@@ -7,7 +7,7 @@ import com.inkpulse.constants.KeyConstants;
 import com.inkpulse.corehelpers.UrlHelper;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Author;
-import com.inkpulse.features.author.dto.AuthorResponse;
+import com.inkpulse.models.response.author.AuthorResponse;
 import com.inkpulse.features.author.elastic.AuthorDocument;
 import com.inkpulse.features.author.queries.GetAuthorsQuery;
 import com.inkpulse.models.pagination.PagedList;
@@ -96,9 +96,11 @@ public class GetAuthorsQueryHandler implements Query.QueryHandler<GetAuthorsQuer
     }
 
     private PagedList<AuthorResponse> fallbackToDatabase(GetAuthorsQuery query) {
-        int pageIndex = Math.max(0, query.getPageNumber() - 1);
-        int size = query.getPageSize();
-        Pageable pageable = PageRequest.of(pageIndex, size, Sort.by("name").ascending());
+        if (query.getSortBy() == null || query.getSortBy().isBlank()) {
+            query.setSortBy("name");
+            query.setSortDirection("asc");
+        }
+        Pageable pageable = query.toPageable();
 
         Page<Author> page;
         if (query.getSearchKeyword() != null && !query.getSearchKeyword().isBlank()) {

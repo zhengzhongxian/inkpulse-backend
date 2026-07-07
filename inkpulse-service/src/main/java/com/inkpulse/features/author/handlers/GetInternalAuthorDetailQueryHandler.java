@@ -6,10 +6,10 @@ import com.inkpulse.entities.Author;
 import com.inkpulse.entities.Book;
 import com.inkpulse.entities.BookEdition;
 import com.inkpulse.entities.Category;
-import com.inkpulse.features.author.dto.AuthorDetailResponse;
+import com.inkpulse.models.response.author.AuthorDetailResponse;
 import com.inkpulse.features.author.queries.GetInternalAuthorDetailQuery;
-import com.inkpulse.features.book.dto.BookEditionResponse;
-import com.inkpulse.features.book.dto.BookResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.repositories.AuthorRepository;
 import com.inkpulse.repositories.BookRepository;
 import com.inkpulse.corehelpers.UrlHelper;
@@ -110,7 +110,10 @@ public class GetInternalAuthorDetailQueryHandler implements Query.QueryHandler<G
                         .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
                         .pageCount(edition.getPageCount())
                         .publicationYear(edition.getPublicationYear())
-                        .dimensions(edition.getDimensions())
+                        .widthCm(edition.getWidthCm())
+                        .heightCm(edition.getHeightCm())
+                        .lengthCm(edition.getLengthCm())
+                        .weightGram(edition.getWeightGram())
                         .language(edition.getLanguage())
                         .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
                         .build())

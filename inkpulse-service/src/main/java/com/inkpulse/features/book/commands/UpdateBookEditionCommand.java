@@ -3,7 +3,7 @@ package com.inkpulse.features.book.commands;
 import com.inkpulse.constants.message.BookMessageConstants;
 import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
-import com.inkpulse.features.book.dto.BookEditionResponse;
+import com.inkpulse.models.response.book.BookEditionResponse;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -43,8 +43,17 @@ public class UpdateBookEditionCommand implements Command<BookEditionResponse> {
     @Max(value = 9999, message = BookMessageConstants.Validate.PUBLICATION_YEAR_INVALID)
     private Integer publicationYear;
 
-    @Size(max = 100, message = BookMessageConstants.Validate.DIMENSIONS_TOO_LONG)
-    private String dimensions;
+    @Min(value = 0, message = "Cân nặng phải từ 0 trở lên")
+    private int weightGram;
+
+    @Min(value = 0, message = "Chiều rộng phải từ 0 trở lên")
+    private int widthCm;
+
+    @Min(value = 0, message = "Chiều cao phải từ 0 trở lên")
+    private int heightCm;
+
+    @Min(value = 0, message = "Chiều dài phải từ 0 trở lên")
+    private int lengthCm;
 
     @Size(max = 50, message = BookMessageConstants.Validate.LANGUAGE_TOO_LONG)
     private String language;

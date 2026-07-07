@@ -2,7 +2,7 @@ package com.inkpulse.features.publisher.handlers;
 
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Publisher;
-import com.inkpulse.features.publisher.dto.PublisherResponse;
+import com.inkpulse.models.response.publisher.PublisherResponse;
 import com.inkpulse.features.publisher.queries.GetPublishersQuery;
 import com.inkpulse.repositories.PublisherRepository;
 import lombok.RequiredArgsConstructor;

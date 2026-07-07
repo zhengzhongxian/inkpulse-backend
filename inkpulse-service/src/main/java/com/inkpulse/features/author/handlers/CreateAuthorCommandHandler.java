@@ -9,7 +9,7 @@ import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.Author;
 import com.inkpulse.features.author.commands.CreateAuthorCommand;
-import com.inkpulse.features.author.dto.AuthorResponse;
+import com.inkpulse.models.response.author.AuthorResponse;
 import com.inkpulse.constants.QueueConstants;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import com.inkpulse.features.author.dto.SyncAuthorMessage;

@@ -19,12 +19,13 @@ public class User extends BaseAuditableEntity<java.util.UUID> {
     @Column(name = "user_name", nullable = false, unique = true, length = 100)
     private String username;
 
-    @Column(name = "password", nullable = false, length = 255)
+    @Column(name = "password", length = 255)
     private String password;
 
     @Column(name = "password_change_at")
     private LocalDateTime passwordChangeAt;
 
+    @Convert(converter = AesEncryptConverter.class)
     @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 

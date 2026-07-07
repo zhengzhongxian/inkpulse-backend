@@ -64,9 +64,21 @@ public class BookEditionDocument {
     @JsonProperty("publication_year")
     private Integer publicationYear;
 
-    @Field(name = "dimensions", type = FieldType.Keyword)
-    @JsonProperty("dimensions")
-    private String dimensions;
+    @Field(name = "weight_gram", type = FieldType.Integer)
+    @JsonProperty("weight_gram")
+    private int weightGram;
+
+    @Field(name = "width_cm", type = FieldType.Integer)
+    @JsonProperty("width_cm")
+    private int widthCm;
+
+    @Field(name = "height_cm", type = FieldType.Integer)
+    @JsonProperty("height_cm")
+    private int heightCm;
+
+    @Field(name = "length_cm", type = FieldType.Integer)
+    @JsonProperty("length_cm")
+    private int lengthCm;
 
     @Field(name = "language", type = FieldType.Keyword)
     @JsonProperty("language")

@@ -18,6 +18,7 @@ public final class KeyConstants {
     public static final String SECTION_BLACKLISTED_TOKENS = "redis:blacklisted_tokens";
     public static final String SECTION_REGISTER_OTP_SESSION = "redis:register_otp_session";
     public static final String SECTION_LOGIN_OTP_SESSION = "redis:login_otp_session";
+    public static final String SECTION_FORGOT_PASSWORD_SESSION = "redis:forgot_password_session";
     public static final String SECTION_USER_PROFILE = "redis:user_profile";
     public static final String SECTION_CATEGORIES = "redis:categories";
     public static final String SECTION_CART_ITEMS = "redis:cart_items";
@@ -32,6 +33,8 @@ public final class KeyConstants {
     public static final String SECTION_PUBLISHER_EDITIONS = "redis:publisher_editions";
     public static final String SECTION_CATEGORY_EDITIONS = "redis:category_editions";
     public static final String SECTION_BOOK_EDITIONS = "redis:book_editions";
+    public static final String SECTION_ORDER_DETAIL = "redis:order_detail";
+    public static final String SECTION_MY_ORDERS = "redis:my_orders";
 
     public static final String CATEGORY_LOCK_RETRY_TIMEOUT = "cache.lock.category.retry-timeout-seconds";
     public static final String CATEGORY_LOCK_RETRY_INTERVAL = "cache.lock.category.retry-interval-ms";
@@ -55,11 +58,26 @@ public final class KeyConstants {
     public static final String MINIO_PRESIGNED_EXPIRY_MINUTES = "minio.presigned-expiry-minutes";
 
     // GHN Configs
+    public static final String GHN_PREFIX = "ghn";
     public static final String GHN_API_TOKEN = "ghn.api-token";
     public static final String GHN_BASE_URL = "ghn.base-url";
+    public static final String GHN_SHOP_ID = "ghn.shop-id";
 
     // Elasticsearch & Storage URL Configs
     public static final String ELASTICSEARCH_URIS = "spring.elasticsearch.uris";
     public static final String STORAGE_PUBLIC_URL = "storage.public-url";
     public static final String STORAGE_PDF_PUBLIC_URL = "storage.pdf-public-url";
+
+    // AES Configs
+    public static final String AES_KEY = "aes.key";
+    public static final String AES_IV = "aes.iv";
+
+    // PayOS Configs
+    public static final String PAYOS_PREFIX = "payos";
+    public static final String PAYOS_CLIENT_ID = "payos.client-id";
+    public static final String PAYOS_API_KEY = "payos.api-key";
+    public static final String PAYOS_CHECKSUM_KEY = "payos.checksum-key";
+    public static final String PAYOS_RETURN_URL = "payos.return-url";
+    public static final String PAYOS_CANCEL_URL = "payos.cancel-url";
+    public static final String PAYOS_EXPIRY_MINUTES = "payos.expiry-minutes";
 }

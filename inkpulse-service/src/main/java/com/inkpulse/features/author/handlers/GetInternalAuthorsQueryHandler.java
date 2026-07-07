@@ -4,7 +4,7 @@ import com.inkpulse.constants.KeyConstants;
 import com.inkpulse.corehelpers.UrlHelper;
 import com.inkpulse.cqrs.Query;
 import com.inkpulse.entities.Author;
-import com.inkpulse.features.author.dto.AuthorResponse;
+import com.inkpulse.models.response.author.AuthorResponse;
 import com.inkpulse.features.author.queries.GetInternalAuthorsQuery;
 import com.inkpulse.models.pagination.PagedList;
 import com.inkpulse.repositories.AuthorRepository;
@@ -37,9 +37,11 @@ public class GetInternalAuthorsQueryHandler implements Query.QueryHandler<GetInt
         log.info("Handling GetInternalAuthorsQuery via DB: page={}, size={}, search={}",
                 query.getPageNumber(), query.getPageSize(), query.getSearchKeyword());
 
-        int pageIndex = Math.max(0, query.getPageNumber() - 1);
-        int size = query.getPageSize();
-        Pageable pageable = PageRequest.of(pageIndex, size, Sort.by("name").ascending());
+        if (query.getSortBy() == null || query.getSortBy().isBlank()) {
+            query.setSortBy("name");
+            query.setSortDirection("asc");
+        }
+        Pageable pageable = query.toPageable();
 
         Page<Author> page;
         if (query.getSearchKeyword() != null && !query.getSearchKeyword().isBlank()) {

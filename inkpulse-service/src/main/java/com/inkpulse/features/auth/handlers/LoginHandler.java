@@ -14,7 +14,7 @@ import com.inkpulse.constants.QueueConstants;
 import com.inkpulse.features.auth.dto.SendNewDeviceAlertEmailMessage;
 import com.inkpulse.features.auth.dto.AccountLockDto;
 import com.inkpulse.features.auth.dto.LoginAttemptsDto;
-import com.inkpulse.models.response.LoginResult;
+import com.inkpulse.models.response.auth.LoginResult;
 import com.inkpulse.features.auth.rules.LoginPipelineContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
