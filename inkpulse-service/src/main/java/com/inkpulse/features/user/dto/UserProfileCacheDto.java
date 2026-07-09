@@ -1,5 +1,6 @@
 package com.inkpulse.features.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.inkpulse.cache.CacheSection;
 import com.inkpulse.cache.Cacheable;
 import com.inkpulse.constants.KeyConstants;
@@ -25,6 +26,7 @@ public record UserProfileCacheDto(
     boolean mfaEnabled,
     List<String> mfaTypes,
     Long coinBalance,
+    @JsonProperty("isSocialAccount") boolean isSocialAccount,
     List<UserAddressCacheDto> addresses
 ) implements Cacheable {
     @Override

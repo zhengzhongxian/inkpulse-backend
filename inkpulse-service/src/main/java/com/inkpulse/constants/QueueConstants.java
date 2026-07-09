@@ -11,7 +11,8 @@ public final class QueueConstants {
     public static final String SYNC_PUBLISHER_NAME = "sync-publisher-name-queue";
     public static final String SYNC_CATEGORY_SLUG = "sync-category-slug-queue";
 
-    public static final String PROCESS_ORDER = "process-order-queue";
+    public static final String CREATE_GHN_ORDER = "create-ghn-order-queue";
+    public static final String GHN_STATUS_UPDATE = "ghn-status-update-queue";
     public static final String PAYOS_WEBHOOK = "payos-webhook-queue";
 
     private QueueConstants() {}

@@ -48,6 +48,11 @@ public final class KeyConstants {
     public static final String JWT_ACCESS_TOKEN_TTL = "jwt.access-token-ttl";
     public static final String JWT_REFRESH_TOKEN_TTL = "jwt.refresh-token-ttl";
 
+    // Cookie Configs
+    public static final String COOKIE_REFRESH_TOKEN_DOMAIN = "cookie.refresh-token.domain";
+    public static final String COOKIE_REFRESH_TOKEN_PATH = "cookie.refresh-token.path";
+    public static final String COOKIE_REFRESH_TOKEN_SECURE = "cookie.refresh-token.secure";
+
     // MinIO Configs
     public static final String MINIO_ENDPOINT = "minio.endpoint";
     public static final String MINIO_ACCESS_KEY = "minio.access-key";

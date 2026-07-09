@@ -25,4 +25,11 @@ public final class OrderMessageConstants {
     public static final String WEBHOOK_TEST = "PayOS test webhook - bỏ qua!";
     public static final String GET_ORDERS_SUCCESS = "Lấy danh sách đơn hàng thành công!";
     public static final String GET_ORDER_DETAIL_SUCCESS = "Lấy chi tiết đơn hàng thành công!";
+    public static final String CONFIRM_PACK_SUCCESS = "Xác nhận đóng gói đơn hàng thành công!";
+    public static final String ORDER_NOT_PROCESSING = "Đơn hàng không ở trạng thái đang xử lý!";
+    public static final String ORDER_NOT_PAID = "Đơn hàng chưa được thanh toán!";
+    public static final String ORDER_ALREADY_PACKED = "Đơn hàng đã được đóng gói trước đó!";
+    public static final String GHN_WEBHOOK_PROCESSED = "GHN Webhook đã được xử lý!";
+    public static final String GHN_WEBHOOK_INVALID = "Dữ liệu GHN Webhook không hợp lệ!";
+    public static final String GET_ORDER_LOGS_SUCCESS = "Lấy lịch sử trạng thái đơn hàng thành công!";
 }

@@ -4,18 +4,15 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateOrderResponse {
-    private java.util.UUID orderId;
+public class ConfirmPackOrderResponse {
+    private UUID orderId;
     private String orderCode;
-    private String orderStatus;
-    private String paymentStatus;
-    private String checkoutUrl;
-    private String qrCode;
+    private String ghnOrderCode;
     private String message;
-    private Long expiredAt;
 }

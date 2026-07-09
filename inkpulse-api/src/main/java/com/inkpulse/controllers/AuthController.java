@@ -39,6 +39,11 @@ import com.inkpulse.constants.message.RegisterMessageConstants;
 import com.inkpulse.constants.message.TokenMessageConstants;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import org.springframework.beans.factory.annotation.Value;
+import com.inkpulse.constants.KeyConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -50,6 +55,15 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
+
+    @Value("${" + KeyConstants.COOKIE_REFRESH_TOKEN_DOMAIN + ":}")
+    private String cookieDomain;
+
+    @Value("${" + KeyConstants.COOKIE_REFRESH_TOKEN_PATH + ":/api/v1/auth}")
+    private String cookiePath;
+
+    @Value("${" + KeyConstants.COOKIE_REFRESH_TOKEN_SECURE + ":false}")
+    private boolean cookieSecure;
 
     private final Pipeline pipeline;
     private final MfaService mfaService;
@@ -71,7 +85,8 @@ public class AuthController {
     @PostMapping("/register/verify")
     public ResponseEntity<ResultRes<LoginResult>> verifyRegister(
             @Valid @RequestBody VerifyRegisterRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String clientIp = getClientIp(httpRequest);
 
@@ -99,6 +114,7 @@ public class AuthController {
         );
 
         LoginResult result = pipeline.send(cmd);
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, RegisterMessageConstants.SUCCESS, 200));
     }
@@ -106,7 +122,8 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<ResultRes<LoginResult>> login(
             @Valid @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String clientIp = getClientIp(httpRequest);
 
@@ -127,16 +144,19 @@ public class AuthController {
                     .body(ResultRes.successResult(result, AuthMessageConstants.LOGIN_MFA_REQUIRED, 202));
         }
 
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
         return ResponseEntity.ok(ResultRes.successResult(result, AuthMessageConstants.LOGIN_SUCCESS, 200));
     }
 
     @PostMapping("/internal/login")
     public ResponseEntity<ResultRes<LoginResult>> internalLogin(
-            @Valid @RequestBody InternalLoginRequest request) {
+            @Valid @RequestBody InternalLoginRequest request,
+            HttpServletResponse httpResponse) {
         log.info("REST request to internal login: login={}", request.getLogin());
 
         InternalLoginCommand cmd = new InternalLoginCommand(request.getLogin(), request.getPassword());
         LoginResult result = pipeline.send(cmd);
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, AuthMessageConstants.INTERNAL_LOGIN_SUCCESS, 200));
     }
@@ -156,7 +176,8 @@ public class AuthController {
     @PostMapping("/mfa/verify")
     public ResponseEntity<ResultRes<LoginResult>> verifyMfa(
             @RequestBody VerifyMfaRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String clientIp = getClientIp(httpRequest);
 
@@ -169,6 +190,7 @@ public class AuthController {
         );
 
         LoginResult result = pipeline.send(cmd);
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, MfaMessageConstants.VERIFIED, 200));
     }
@@ -257,18 +279,32 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<ResultRes<LoginResult>> refresh(
-            @RequestBody RefreshTokenRequest request) {
+            @RequestBody(required = false) RefreshTokenRequest request,
+            @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
+            HttpServletResponse httpResponse) {
 
-        RefreshTokenCommand cmd = new RefreshTokenCommand(request.getRefreshToken());
+        String token = (cookieRefreshToken != null && !cookieRefreshToken.isBlank())
+                ? cookieRefreshToken
+                : (request != null ? request.getRefreshToken() : null);
+
+        if (token == null || token.isBlank()) {
+            throw new com.inkpulse.corehelpers.exceptions.BusinessValidationException(
+                    "Không tìm thấy Refresh Token trong Cookie hoặc Request Body!", "REFRESH_TOKEN_MISSING");
+        }
+
+        RefreshTokenCommand cmd = new RefreshTokenCommand(token);
         LoginResult result = pipeline.send(cmd);
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, TokenMessageConstants.REFRESHED, 200));
     }
 
     @PostMapping("/logout")
     public ResponseEntity<ResultRes<Object>> logout(
-            @RequestBody LogoutRequest request,
-            HttpServletRequest httpRequest) {
+            @RequestBody(required = false) LogoutRequest request,
+            @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String authHeader = httpRequest.getHeader("Authorization");
         String accessToken = "";
@@ -276,13 +312,18 @@ public class AuthController {
             accessToken = authHeader.substring(7);
         }
 
+        String token = (cookieRefreshToken != null && !cookieRefreshToken.isBlank())
+                ? cookieRefreshToken
+                : (request != null ? request.getRefreshToken() : null);
+
         // reason_code: client may specify (e.g. CHANGE_PASSWORD). Defaults to DIRECTLY_LOGOUT.
-        String reasonCode = (request.getReasonCode() != null && !request.getReasonCode().isBlank())
+        String reasonCode = (request != null && request.getReasonCode() != null && !request.getReasonCode().isBlank())
                 ? request.getReasonCode()
                 : "DIRECTLY_LOGOUT";
 
-        LogoutCommand cmd = new LogoutCommand(request.getRefreshToken(), accessToken, reasonCode);
+        LogoutCommand cmd = new LogoutCommand(token, accessToken, reasonCode);
         pipeline.send(cmd);
+        clearRefreshTokenCookie(httpResponse);
 
         return ResponseEntity.ok(ResultRes.successResult(TokenMessageConstants.REVOKED, 200));
     }
@@ -314,7 +355,8 @@ public class AuthController {
     @PostMapping("/google")
     public ResponseEntity<ResultRes<GoogleLoginResult>> googleLogin(
             @Valid @RequestBody GoogleLoginRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
         String clientIp = getClientIp(httpRequest);
         GoogleLoginCommand cmd = GoogleLoginCommand.builder()
                 .idToken(request.getIdToken())
@@ -325,13 +367,17 @@ public class AuthController {
                 .clientIp(clientIp)
                 .build();
         GoogleLoginResult result = pipeline.send(cmd);
+        if (result.getAccessToken() != null) {
+            setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        }
         return ResponseEntity.ok(ResultRes.successResult(result));
     }
 
     @PostMapping("/google/register")
     public ResponseEntity<ResultRes<LoginResult>> googleRegister(
             @Valid @RequestBody GoogleRegisterRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
         String clientIp = getClientIp(httpRequest);
         GoogleRegisterCommand cmd = GoogleRegisterCommand.builder()
                 .googleUserId(request.getGoogleUserId())
@@ -357,6 +403,7 @@ public class AuthController {
                 .addressLabel(request.getAddressLabel())
                 .build();
         LoginResult result = pipeline.send(cmd);
+        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
         return ResponseEntity.ok(ResultRes.successResult(result, RegisterMessageConstants.SUCCESS, 200));
     }
 
@@ -366,5 +413,34 @@ public class AuthController {
             return xForwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private void setRefreshTokenCookie(HttpServletResponse response, String token, int maxAgeSeconds) {
+        if (token == null) return;
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", token)
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .path(cookiePath)
+                .maxAge(maxAgeSeconds)
+                .sameSite("Lax");
+        if (cookieDomain != null && !cookieDomain.isBlank()) {
+            builder.domain(cookieDomain);
+        }
+        ResponseCookie cookie = builder.build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private void clearRefreshTokenCookie(HttpServletResponse response) {
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", "")
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .path(cookiePath)
+                .maxAge(0)
+                .sameSite("Lax");
+        if (cookieDomain != null && !cookieDomain.isBlank()) {
+            builder.domain(cookieDomain);
+        }
+        ResponseCookie cookie = builder.build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 }

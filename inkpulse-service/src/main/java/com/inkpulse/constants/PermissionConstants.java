@@ -90,4 +90,12 @@ public final class PermissionConstants {
 
         public static final String ORDER = "Permissions.BookEditions.Order";
     }
+
+    public static final class Orders {
+        private Orders() {
+        }
+
+        public static final String PACK = "Permissions.Orders.Pack";
+        public static final String INTERNAL_VIEW = "Permissions.Orders.InternalView";
+    }
 }

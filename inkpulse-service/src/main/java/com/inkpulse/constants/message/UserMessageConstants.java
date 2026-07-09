@@ -15,6 +15,7 @@ public final class UserMessageConstants {
     public static final String PASSWORD_MATCHES_CURRENT = "Mật khẩu mới không được trùng với mật khẩu hiện tại";
     public static final String PASSWORD_IN_HISTORY = "Mật khẩu mới không được trùng với 5 mật khẩu gần nhất";
     public static final String CHANGE_PASSWORD_SUCCESS = "Đổi mật khẩu thành công!";
+    public static final String CANNOT_CHANGE_SOCIAL_PASSWORD = "Tài khoản không hỗ trợ đổi mật khẩu";
     
     // MFA types
     public static final String MFA_TYPE_NOT_FOUND = "Không tìm thấy kiểu MFA: ";

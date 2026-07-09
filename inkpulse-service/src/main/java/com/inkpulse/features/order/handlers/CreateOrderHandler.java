@@ -15,7 +15,6 @@ import com.inkpulse.features.order.commands.CreateOrderCommand;
 import com.inkpulse.models.response.order.CreateOrderResponse;
 import com.inkpulse.models.request.order.OrderItemRequest;
 import com.inkpulse.features.order.rules.CreateOrderContext;
-import com.inkpulse.models.message.ProcessOrderMessage;
 import com.inkpulse.pipeline.EligibilityPipeline;
 import com.inkpulse.pipeline.IEligibilityRule;
 import com.inkpulse.repositories.*;
@@ -257,10 +256,13 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
         }
 
         String checkoutUrl = null;
+        String qrCode = null;
+        Long expiredAt = null;
 
         if (paymentMethod == PaymentMethod.PAYOS) {
             // 12. Create PayOS Payment Link
             long expiryTimestamp = (System.currentTimeMillis() / 1000) + (payOsSettings.getExpiryMinutes() * 60L);
+            expiredAt = expiryTimestamp;
             long payOsOrderCode = Long.parseLong(orderCode);
 
             // Alphanumeric, no accents, max 25 chars for PayOS description
@@ -284,62 +286,13 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
             try {
                 CreatePaymentLinkResponse payOsRes = payOsService.createPaymentLink(payOsReq);
                 checkoutUrl = payOsRes.getCheckoutUrl();
+                qrCode = payOsRes.getQrCode();
                 transaction.setTransactionCode(payOsRes.getPaymentLinkId());
                 paymentTransactionRepository.save(transaction);
             } catch (Exception e) {
                 log.error("Failed to create PayOS payment link for order: {}", orderCode, e);
                 throw new BusinessValidationException(OrderMessageConstants.PAYOS_CREATE_LINK_FAILED, "PAYOS_ERROR");
             }
-        } else if (paymentMethod == PaymentMethod.COD) {
-            // 13. Publish ProcessOrderMessage to Outbox for COD orders
-            // Prepare items info
-            List<ProcessOrderMessage.OrderItemInfo> itemInfos = new ArrayList<>();
-            for (OrderItemRequest item : command.getItems()) {
-                BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
-                itemInfos.add(ProcessOrderMessage.OrderItemInfo.builder()
-                        .name(edition.getBook() != null ? edition.getBook().getTitle() : edition.getIsbn())
-                        .code(edition.getIsbn())
-                        .quantity(item.getQuantity())
-                        .price(edition.getPrice().intValue())
-                        .weight(edition.getWeightGram())
-                        .length(edition.getLengthCm())
-                        .width(edition.getWidthCm())
-                        .height(edition.getHeightCm())
-                        .build());
-            }
-
-            String fullAddress = streetAddress + ", " + ward.getWardName() + ", " + district.getDistrictName() + ", " + province.getProvinceName();
-
-            // Encrypt sensitive info for RabbitMQ message
-            String encryptedPhone = cryptographyService.encrypt(recipientPhone);
-            String encryptedEmail = user.getEmail(); // Already encrypted in DB
-
-            ProcessOrderMessage msg = ProcessOrderMessage.builder()
-                    .orderCode(orderCode)
-                    .receiverName(receiverName)
-                    .recipientPhone(encryptedPhone)
-                    .toAddress(fullAddress)
-                    .toWardCode(ward.getWardCode())
-                    .toDistrictId(district.getDistrictId())
-                    .toWardName(ward.getWardName())
-                    .toDistrictName(district.getDistrictName())
-                    .toProvinceName(province.getProvinceName())
-                    .paymentMethod("COD")
-                    .codAmount(totalInsuranceValue.add(shippingFee).intValue())
-                    .totalWeight(totalWeight)
-                    .totalLength(maxLength)
-                    .totalWidth(maxWidth)
-                    .totalHeight(totalHeight)
-                    .insuranceValue(insuranceVal)
-                    .items(itemInfos)
-                    .userEmail(encryptedEmail)
-                    .userName(user.getProfile() != null ? user.getProfile().getFullName() : user.getUsername())
-                    .build();
-
-            outboxPublisher.publish(
-                    QueueConstants.PROCESS_ORDER,
-                    msg,
-                    "urn:message:InkPulse.Worker.Features.Order.Messages:ProcessOrderMessage");
         }
 
         return CreateOrderResponse.builder()
@@ -348,6 +301,8 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
                 .orderStatus(initialStatus.name())
                 .paymentStatus(PaymentStatus.PENDING.name())
                 .checkoutUrl(checkoutUrl)
+                .qrCode(qrCode)
+                .expiredAt(expiredAt)
                 .message(OrderMessageConstants.CREATE_ORDER_SUCCESS)
                 .build();
     }

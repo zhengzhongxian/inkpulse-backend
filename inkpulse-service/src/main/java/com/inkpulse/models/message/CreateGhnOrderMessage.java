@@ -10,7 +10,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProcessOrderMessage {
+public class CreateGhnOrderMessage {
     private String orderCode;
     private String receiverName;
     private String recipientPhone; // Encrypted
