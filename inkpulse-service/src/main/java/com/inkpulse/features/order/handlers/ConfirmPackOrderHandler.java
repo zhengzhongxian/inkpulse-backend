@@ -11,12 +11,16 @@ import com.inkpulse.entities.enums.PaymentMethod;
 import com.inkpulse.features.order.commands.ConfirmPackOrderCommand;
 import com.inkpulse.models.response.order.ConfirmPackOrderResponse;
 import com.inkpulse.features.order.rules.ConfirmPackOrderContext;
-import com.inkpulse.models.message.CreateGhnOrderMessage;
+import com.inkpulse.features.order.dto.CreateGhnOrderMessage;
 import com.inkpulse.pipeline.EligibilityContext;
 import com.inkpulse.pipeline.EligibilityPipeline;
 import com.inkpulse.pipeline.IEligibilityRule;
 import com.inkpulse.repositories.OrderDetailRepository;
 import com.inkpulse.repositories.OrderRepository;
+import com.inkpulse.repositories.OrderEventRepository;
+import com.inkpulse.entities.OrderEvent;
+import com.inkpulse.entities.enums.OrderEventType;
+import com.inkpulse.corehelpers.JsonHelper;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +30,7 @@ import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -36,6 +41,7 @@ public class ConfirmPackOrderHandler implements Command.CommandHandler<ConfirmPa
     private final OrderDetailRepository orderDetailRepository;
     private final ICryptographyService cryptographyService;
     private final OutboxPublisher outboxPublisher;
+    private final OrderEventRepository orderEventRepository;
     private final List<IEligibilityRule<ConfirmPackOrderContext>> packRules;
 
     @Override
@@ -127,6 +133,15 @@ public class ConfirmPackOrderHandler implements Command.CommandHandler<ConfirmPa
                 "urn:message:InkPulse.Worker.Features.Order.Messages:CreateGhnOrderMessage");
 
         log.info("Successfully published CreateGhnOrderMessage to Outbox for order: {}", order.getOrderCode());
+
+        // Save Order Event (Order Event Store)
+        OrderEvent orderEvent = OrderEvent.builder()
+                .order(order)
+                .eventType(OrderEventType.ORDER_PACKED)
+                .eventData(JsonHelper.serializeSafe(command))
+                .createdBy(command.getAdminUserId())
+                .build();
+        orderEventRepository.save(orderEvent);
 
         return ConfirmPackOrderResponse.builder()
                 .orderId(order.getId())

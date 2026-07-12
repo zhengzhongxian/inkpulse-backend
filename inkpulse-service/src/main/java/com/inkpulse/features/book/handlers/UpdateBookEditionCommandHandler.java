@@ -95,9 +95,6 @@ public class UpdateBookEditionCommandHandler
         if (cmd.getOldPrice() != null) {
             edition.setOldPrice(cmd.getOldPrice());
         }
-        if (cmd.getStockQuantity() != null) {
-            edition.setStockQuantity(cmd.getStockQuantity());
-        }
         if (cmd.getEditionNumber() != null) {
             edition.setEditionNumber(cmd.getEditionNumber());
         }

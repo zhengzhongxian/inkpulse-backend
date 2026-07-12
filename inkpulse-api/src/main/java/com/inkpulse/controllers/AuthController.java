@@ -114,7 +114,7 @@ public class AuthController {
         );
 
         LoginResult result = pipeline.send(cmd);
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, RegisterMessageConstants.SUCCESS, 200));
     }
@@ -144,19 +144,20 @@ public class AuthController {
                     .body(ResultRes.successResult(result, AuthMessageConstants.LOGIN_MFA_REQUIRED, 202));
         }
 
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
         return ResponseEntity.ok(ResultRes.successResult(result, AuthMessageConstants.LOGIN_SUCCESS, 200));
     }
 
     @PostMapping("/internal/login")
     public ResponseEntity<ResultRes<LoginResult>> internalLogin(
             @Valid @RequestBody InternalLoginRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
         log.info("REST request to internal login: login={}", request.getLogin());
 
         InternalLoginCommand cmd = new InternalLoginCommand(request.getLogin(), request.getPassword());
         LoginResult result = pipeline.send(cmd);
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, AuthMessageConstants.INTERNAL_LOGIN_SUCCESS, 200));
     }
@@ -190,7 +191,7 @@ public class AuthController {
         );
 
         LoginResult result = pipeline.send(cmd);
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, MfaMessageConstants.VERIFIED, 200));
     }
@@ -280,9 +281,10 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<ResultRes<LoginResult>> refresh(
             @RequestBody(required = false) RefreshTokenRequest request,
-            @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
+            HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
 
+        String cookieRefreshToken = getRefreshTokenFromCookie(httpRequest);
         String token = (cookieRefreshToken != null && !cookieRefreshToken.isBlank())
                 ? cookieRefreshToken
                 : (request != null ? request.getRefreshToken() : null);
@@ -294,7 +296,7 @@ public class AuthController {
 
         RefreshTokenCommand cmd = new RefreshTokenCommand(token);
         LoginResult result = pipeline.send(cmd);
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
 
         return ResponseEntity.ok(ResultRes.successResult(result, TokenMessageConstants.REFRESHED, 200));
     }
@@ -302,7 +304,6 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<ResultRes<Object>> logout(
             @RequestBody(required = false) LogoutRequest request,
-            @CookieValue(name = "refresh_token", required = false) String cookieRefreshToken,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
 
@@ -312,6 +313,7 @@ public class AuthController {
             accessToken = authHeader.substring(7);
         }
 
+        String cookieRefreshToken = getRefreshTokenFromCookie(httpRequest);
         String token = (cookieRefreshToken != null && !cookieRefreshToken.isBlank())
                 ? cookieRefreshToken
                 : (request != null ? request.getRefreshToken() : null);
@@ -323,7 +325,7 @@ public class AuthController {
 
         LogoutCommand cmd = new LogoutCommand(token, accessToken, reasonCode);
         pipeline.send(cmd);
-        clearRefreshTokenCookie(httpResponse);
+        clearRefreshTokenCookie(httpRequest, httpResponse);
 
         return ResponseEntity.ok(ResultRes.successResult(TokenMessageConstants.REVOKED, 200));
     }
@@ -368,7 +370,7 @@ public class AuthController {
                 .build();
         GoogleLoginResult result = pipeline.send(cmd);
         if (result.getAccessToken() != null) {
-            setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+            setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
         }
         return ResponseEntity.ok(ResultRes.successResult(result));
     }
@@ -403,7 +405,7 @@ public class AuthController {
                 .addressLabel(request.getAddressLabel())
                 .build();
         LoginResult result = pipeline.send(cmd);
-        setRefreshTokenCookie(httpResponse, result.getRefreshToken(), 604800);
+        setRefreshTokenCookie(httpRequest, httpResponse, result.getRefreshToken(), 604800);
         return ResponseEntity.ok(ResultRes.successResult(result, RegisterMessageConstants.SUCCESS, 200));
     }
 
@@ -415,9 +417,27 @@ public class AuthController {
         return request.getRemoteAddr();
     }
 
-    private void setRefreshTokenCookie(HttpServletResponse response, String token, int maxAgeSeconds) {
+    private String getCookieName(HttpServletRequest request) {
+        String clientType = request.getHeader("X-Client-Type");
+        return "INTERNAL".equalsIgnoreCase(clientType) ? "internal_refresh_token" : "refresh_token";
+    }
+
+    private String getRefreshTokenFromCookie(HttpServletRequest request) {
+        String cookieName = getCookieName(request);
+        if (request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                if (cookieName.equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    private void setRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response, String token, int maxAgeSeconds) {
         if (token == null) return;
-        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", token)
+        String cookieName = getCookieName(request);
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(cookieName, token)
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .path(cookiePath)
@@ -430,8 +450,9 @@ public class AuthController {
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
-    private void clearRefreshTokenCookie(HttpServletResponse response) {
-        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("refresh_token", "")
+    private void clearRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response) {
+        String cookieName = getCookieName(request);
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(cookieName, "")
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .path(cookiePath)

@@ -6,9 +6,15 @@ import com.inkpulse.models.pagination.PagedRequest;
 import com.inkpulse.models.response.order.OrderSummaryResponse;
 import lombok.Getter;
 import lombok.Setter;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
 public class GetInternalOrdersQuery extends PagedRequest implements Query<PagedList<OrderSummaryResponse>> {
     private String status;
+    private String startDate;
+    private String endDate;
+    private String paymentMethod;
+    private BigDecimal minAmount;
+    private BigDecimal maxAmount;
 }

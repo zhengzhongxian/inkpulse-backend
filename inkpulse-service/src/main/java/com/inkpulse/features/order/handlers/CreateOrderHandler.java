@@ -25,6 +25,19 @@ import com.inkpulse.models.request.ghn.GhnShippingItem;
 import com.inkpulse.service.payos.IPayOsService;
 import com.inkpulse.service.payos.PayOsSettings;
 import com.inkpulse.service.outbox.OutboxPublisher;
+import com.inkpulse.entities.OrderEvent;
+import com.inkpulse.entities.StockTransaction;
+import com.inkpulse.entities.enums.OrderEventType;
+import com.inkpulse.entities.enums.StockTransactionType;
+import com.inkpulse.repositories.OrderEventRepository;
+import com.inkpulse.repositories.StockTransactionRepository;
+import com.inkpulse.features.book.dto.BookEditionSyncHelper;
+import com.inkpulse.features.book.dto.SyncBookEditionMessage;
+import com.inkpulse.constants.message.StockMessageConstants;
+import com.inkpulse.cache.ICacheService;
+import com.inkpulse.cache.CacheProperties;
+import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.JsonHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -58,6 +71,12 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
     private final PayOsSettings payOsSettings;
     private final ICryptographyService cryptographyService;
     private final OutboxPublisher outboxPublisher;
+
+    private final OrderEventRepository orderEventRepository;
+    private final StockTransactionRepository stockTransactionRepository;
+    private final BookEditionSyncHelper bookEditionSyncHelper;
+    private final ICacheService cacheService;
+    private final CacheProperties cacheProperties;
 
     private final List<IEligibilityRule<CreateOrderContext>> orderRules;
 
@@ -207,6 +226,15 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
 
         order = orderRepository.saveAndFlush(order);
 
+        // Save Order Event (Order Event Store)
+        OrderEvent orderEvent = OrderEvent.builder()
+                .order(order)
+                .eventType(OrderEventType.ORDER_CREATED)
+                .eventData(JsonHelper.serializeSafe(command))
+                .createdBy(user.getId())
+                .build();
+        orderEventRepository.save(orderEvent);
+
         // 7. Save Order Details
         for (OrderItemRequest item : command.getItems()) {
             BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
@@ -242,11 +270,50 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
                 .build();
         orderLogRepository.save(orderLog);
 
-        // 10. Deduct Stock Quantity
+        // 10. Deduct Stock Quantity (Atomic SQL + Stock Event + ES/Redis Sync)
         for (OrderItemRequest item : command.getItems()) {
             BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
+            int affected = bookEditionRepository.decrementStock(edition.getId(), item.getQuantity());
+            if (affected == 0) {
+                throw new BusinessValidationException(
+                        String.format(StockMessageConstants.STOCK_INSUFFICIENT, 
+                                edition.getBook() != null ? edition.getBook().getTitle() : edition.getIsbn(), 
+                                edition.getStockQuantity()), 
+                        StockMessageConstants.CODE_STOCK_INSUFFICIENT
+                );
+            }
+
+            // Update local object to sync with ELS correctly
             edition.setStockQuantity(edition.getStockQuantity() - item.getQuantity());
-            bookEditionRepository.save(edition);
+
+            // Save Stock Transaction
+            StockTransaction tx = StockTransaction.builder()
+                    .edition(edition)
+                    .delta(-item.getQuantity())
+                    .type(StockTransactionType.EXPORT_ORDER)
+                    .referenceCode(orderCode)
+                    .note(OrderMessageConstants.CREATE_ORDER_SUCCESS)
+                    .createdBy(user.getId())
+                    .build();
+            stockTransactionRepository.save(tx);
+
+            // Sync with Elasticsearch
+            SyncBookEditionMessage syncMsg = bookEditionSyncHelper.buildSyncMessage(edition);
+            if (syncMsg != null) {
+                outboxPublisher.publish(
+                        QueueConstants.SYNC_BOOK_EDITION_PARTIAL,
+                        syncMsg,
+                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage"
+                );
+            }
+
+            // Evict Cache
+            try {
+                String cacheKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL, edition.getId().toString());
+                cacheService.remove(cacheKey);
+            } catch (Exception ex) {
+                log.error("Failed to evict detail cache for edition: {}", edition.getId(), ex);
+            }
         }
 
         // 11. Clear Cart Items (if checked out from cart)

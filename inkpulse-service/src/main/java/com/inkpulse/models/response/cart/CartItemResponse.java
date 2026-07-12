@@ -12,5 +12,8 @@ public record CartItemResponse(
     String priceDisplay,
     int quantity,
     int stockQuantity,
-    boolean stockSufficient
+    boolean stockSufficient,
+    Integer editionNumber,
+    String coverType,
+    String isbn
 ) {}

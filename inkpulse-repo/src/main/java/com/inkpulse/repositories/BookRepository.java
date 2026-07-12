@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Repository
@@ -47,6 +48,8 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
                      "AND (:coverType IS NULL OR LOWER(be.coverType) = LOWER(CAST(:coverType AS string))) " +
                      "AND (:minPrice IS NULL OR be.price >= :minPrice) " +
                      "AND (:maxPrice IS NULL OR be.price <= :maxPrice) " +
+                     "AND (CAST(:startDate AS LocalDateTime) IS NULL OR b.createdAt >= :startDate) " +
+                     "AND (CAST(:endDate AS LocalDateTime) IS NULL OR b.createdAt <= :endDate) " +
                      "AND (:keyword IS NULL OR LOWER(b.title) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')) " +
                      "OR LOWER(b.introduce) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')) " +
                      "OR LOWER(be.isbn) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))")
@@ -57,6 +60,8 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
                      @Param("minPrice") BigDecimal minPrice,
                      @Param("maxPrice") BigDecimal maxPrice,
                      @Param("active") Boolean active,
+                     @Param("startDate") LocalDateTime startDate,
+                     @Param("endDate") LocalDateTime endDate,
                      Pageable pageable);
 
        @Query("SELECT DISTINCT b FROM Book b " +

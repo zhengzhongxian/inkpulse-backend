@@ -4,7 +4,10 @@ import com.inkpulse.constants.message.BookMessageConstants;
 import com.inkpulse.corehelpers.images.UploadFileModel;
 import com.inkpulse.cqrs.Command;
 import com.inkpulse.models.response.book.BookEditionResponse;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
@@ -26,9 +29,6 @@ public class UpdateBookEditionCommand implements Command<BookEditionResponse> {
 
     @DecimalMin(value = "0.01", message = BookMessageConstants.Validate.OLD_PRICE_INVALID)
     private BigDecimal oldPrice;
-
-    @Min(value = 0, message = BookMessageConstants.Validate.STOCK_INVALID)
-    private Integer stockQuantity;
 
     @Min(value = 1, message = BookMessageConstants.Validate.EDITION_NUMBER_INVALID)
     private Integer editionNumber;

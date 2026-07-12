@@ -73,20 +73,42 @@ public class GetInternalOrdersQueryHandler implements Query.QueryHandler<GetInte
             searchKeyword = null;
         }
 
-        Page<Order> ordersPage;
-        if (searchKeyword == null) {
-            if (statusEnum == null) {
-                ordersPage = orderRepository.findAll(pageable);
-            } else {
-                ordersPage = orderRepository.findByOrderStatus(statusEnum, pageable);
-            }
-        } else {
-            if (statusEnum == null) {
-                ordersPage = orderRepository.searchOrdersInternalNoStatus(searchKeyword, pageable);
-            } else {
-                ordersPage = orderRepository.searchOrdersInternal(statusEnum, searchKeyword, pageable);
+        java.time.LocalDateTime startDateTime = null;
+        if (query.getStartDate() != null && !query.getStartDate().trim().isEmpty()) {
+            try {
+                startDateTime = java.time.LocalDate.parse(query.getStartDate().trim()).atStartOfDay();
+            } catch (Exception e) {
+                log.warn("Failed to parse startDate: {}", query.getStartDate(), e);
             }
         }
+        java.time.LocalDateTime endDateTime = null;
+        if (query.getEndDate() != null && !query.getEndDate().trim().isEmpty()) {
+            try {
+                endDateTime = java.time.LocalDate.parse(query.getEndDate().trim()).atTime(23, 59, 59);
+            } catch (Exception e) {
+                log.warn("Failed to parse endDate: {}", query.getEndDate(), e);
+            }
+        }
+
+        com.inkpulse.entities.enums.PaymentMethod pmEnum = null;
+        if (query.getPaymentMethod() != null && !query.getPaymentMethod().trim().isEmpty() && !"ALL".equalsIgnoreCase(query.getPaymentMethod())) {
+            try {
+                pmEnum = com.inkpulse.entities.enums.PaymentMethod.valueOf(query.getPaymentMethod().trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid payment method query parameter: {}", query.getPaymentMethod());
+            }
+        }
+
+        Page<Order> ordersPage = orderRepository.searchOrdersInternalAllFilters(
+                statusEnum,
+                pmEnum,
+                searchKeyword,
+                startDateTime,
+                endDateTime,
+                query.getMinAmount(),
+                query.getMaxAmount(),
+                pageable
+        );
 
         return PagedList.fromPage(ordersPage, order -> {
             List<OrderDetail> details = orderDetailRepository.findByOrderId(order.getId());

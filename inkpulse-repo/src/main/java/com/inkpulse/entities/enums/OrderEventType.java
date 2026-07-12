@@ -1,0 +1,14 @@
+package com.inkpulse.entities.enums;
+
+public enum OrderEventType {
+    ORDER_CREATED,
+    PAYMENT_COMPLETED,
+    PAYMENT_FAILED,
+    ORDER_APPROVED,
+    ORDER_PACKED,
+    ORDER_SHIPPED,
+    ORDER_DELIVERED,
+    ORDER_CANCELLED,
+    ORDER_RETURNED,
+    SHIPPING_UPDATED
+}

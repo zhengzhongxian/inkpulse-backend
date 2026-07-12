@@ -7,5 +7,8 @@ public record OrderItemDetailResponse(
     String thumbnailUrl,
     int quantity,
     String priceDisplay,
-    String subtotalDisplay
+    String subtotalDisplay,
+    Integer editionNumber,
+    String coverType,
+    String isbn
 ) {}

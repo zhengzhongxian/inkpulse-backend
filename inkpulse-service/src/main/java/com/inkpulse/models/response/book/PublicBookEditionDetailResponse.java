@@ -20,6 +20,7 @@ public class PublicBookEditionDetailResponse {
     private String priceDisplay;
     private String oldPriceDisplay;
     private int stockQuantity;
+    private String stockStatus;
     private int editionNumber;
     private int soldCount;
     private String thumbnailUrl;

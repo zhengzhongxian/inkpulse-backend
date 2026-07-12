@@ -71,7 +71,10 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
                     BookEditionResponse.formatVnd(edition.getPrice()),
                     item.getQuantity(),
                     stockQty,
-                    stockSufficient
+                    stockSufficient,
+                    edition.getEditionNumber(),
+                    edition.getCoverType() != null ? edition.getCoverType().name() : null,
+                    edition.getIsbn()
             );
         });
     }

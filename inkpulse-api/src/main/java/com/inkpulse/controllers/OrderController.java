@@ -6,6 +6,8 @@ import com.inkpulse.models.response.ResultRes;
 import com.inkpulse.features.order.commands.CalculateShippingFeeCommand;
 import com.inkpulse.features.order.commands.CreateOrderCommand;
 import com.inkpulse.features.order.commands.ConfirmPackOrderCommand;
+import com.inkpulse.features.order.commands.PrintOrderLabelCommand;
+import com.inkpulse.models.response.order.PrintOrderLabelResponse;
 import com.inkpulse.features.order.queries.GetMyOrdersQuery;
 import com.inkpulse.features.order.queries.GetOrderDetailQuery;
 import com.inkpulse.features.order.queries.GetInternalOrdersQuery;
@@ -30,6 +32,11 @@ import java.util.List;
 import java.util.UUID;
 
 import com.inkpulse.features.order.commands.ApproveOrderCommand;
+import com.inkpulse.features.order.commands.CancelOrderCommand;
+import com.inkpulse.features.order.commands.ReturnOrderCommand;
+import com.inkpulse.features.order.commands.UpdateOrderShippingCommand;
+import com.inkpulse.models.request.order.UpdateShippingRequest;
+import org.springframework.security.core.Authentication;
 
 @Slf4j
 @RestController
@@ -102,19 +109,41 @@ public class OrderController {
         return ResponseEntity.ok(ResultRes.successResult(null, "Duyệt đơn hàng thành công!", 200));
     }
 
+    @PostMapping("/{orderCode}/print")
+    @PreAuthorize("hasAuthority('" + PermissionConstants.Orders.PACK + "')")
+    public ResponseEntity<ResultRes<PrintOrderLabelResponse>> printOrderLabel(
+            @AuthenticationPrincipal String adminUserId,
+            @PathVariable("orderCode") String orderCode) {
+        log.info("Request to print label for order: {} by admin: {}", orderCode, adminUserId);
+        PrintOrderLabelCommand command = new PrintOrderLabelCommand(UUID.fromString(adminUserId), orderCode);
+        PrintOrderLabelResponse response = pipeline.send(command);
+        return ResponseEntity.ok(ResultRes.successResult(response, "Sinh link in vận đơn thành công!", 200));
+    }
+
     @GetMapping("/internal")
     @PreAuthorize("hasAuthority('" + PermissionConstants.Orders.INTERNAL_VIEW + "')")
     public ResponseEntity<ResultRes<PagedList<OrderSummaryResponse>>> getInternalOrders(
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size,
             @RequestParam(value = "search", required = false) String search,
-            @RequestParam(value = "status", required = false) String status) {
-        log.info("Request by admin to get internal orders: page={}, size={}, search={}, status={}", page, size, search, status);
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "paymentMethod", required = false) String paymentMethod,
+            @RequestParam(value = "minAmount", required = false) java.math.BigDecimal minAmount,
+            @RequestParam(value = "maxAmount", required = false) java.math.BigDecimal maxAmount) {
+        log.info("Request by admin to get internal orders: page={}, size={}, search={}, status={}, startDate={}, endDate={}, pm={}, minAmount={}, maxAmount={}",
+                page, size, search, status, startDate, endDate, paymentMethod, minAmount, maxAmount);
         GetInternalOrdersQuery query = new GetInternalOrdersQuery();
         query.setPageNumber(page);
         query.setPageSize(size);
         query.setSearchKeyword(search);
         query.setStatus(status);
+        query.setStartDate(startDate);
+        query.setEndDate(endDate);
+        query.setPaymentMethod(paymentMethod);
+        query.setMinAmount(minAmount);
+        query.setMaxAmount(maxAmount);
         PagedList<OrderSummaryResponse> response = pipeline.send(query);
         return ResponseEntity.ok(ResultRes.successResult(response, OrderMessageConstants.GET_ORDERS_SUCCESS, 200));
     }
@@ -137,5 +166,60 @@ public class OrderController {
         GetOrderLogsQuery query = new GetOrderLogsQuery(orderCode);
         List<OrderLogResponse> response = pipeline.send(query);
         return ResponseEntity.ok(ResultRes.successResult(response, OrderMessageConstants.GET_ORDER_LOGS_SUCCESS, 200));
+    }
+
+    @PostMapping("/{orderCode}/cancel")
+    public ResponseEntity<ResultRes<Void>> cancelOrder(
+            @AuthenticationPrincipal String userId,
+            Authentication authentication,
+            @PathVariable("orderCode") String orderCode) {
+        log.info("Request to cancel order: {} by user: {}", orderCode, userId);
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") 
+                            || a.getAuthority().equals("ROLE_EMPLOYEE")
+                            || a.getAuthority().equals(PermissionConstants.Orders.PACK));
+        
+        CancelOrderCommand command = CancelOrderCommand.builder()
+                .orderCode(orderCode)
+                .userId(userId)
+                .isAdmin(isAdmin)
+                .build();
+        pipeline.send(command);
+        return ResponseEntity.ok(ResultRes.successResult(null, OrderMessageConstants.CANCEL_ORDER_SUCCESS, 200));
+    }
+
+    @PostMapping("/{orderCode}/return")
+    @PreAuthorize("hasAuthority('" + PermissionConstants.Orders.PACK + "')")
+    public ResponseEntity<ResultRes<Void>> returnOrder(
+            @AuthenticationPrincipal String adminUserId,
+            @PathVariable("orderCode") String orderCode) {
+        log.info("Request to return order: {} by admin: {}", orderCode, adminUserId);
+        ReturnOrderCommand command = ReturnOrderCommand.builder()
+                .orderCode(orderCode)
+                .adminUserId(adminUserId)
+                .build();
+        pipeline.send(command);
+        return ResponseEntity.ok(ResultRes.successResult(null, OrderMessageConstants.RETURN_ORDER_SUCCESS, 200));
+    }
+
+    @PostMapping("/{orderCode}/shipping-update")
+    @PreAuthorize("hasAuthority('" + PermissionConstants.Orders.PACK + "')")
+    public ResponseEntity<ResultRes<Void>> updateShipping(
+            @AuthenticationPrincipal String adminUserId,
+            @PathVariable("orderCode") String orderCode,
+            @RequestBody UpdateShippingRequest request) {
+        log.info("Request to update shipping for order: {} by admin: {}", orderCode, adminUserId);
+        UpdateOrderShippingCommand command = UpdateOrderShippingCommand.builder()
+                .orderCode(orderCode)
+                .adminUserId(adminUserId)
+                .note(request.getNote())
+                .requiredNote(request.getRequiredNote())
+                .weight(request.getWeight())
+                .length(request.getLength())
+                .width(request.getWidth())
+                .height(request.getHeight())
+                .build();
+        pipeline.send(command);
+        return ResponseEntity.ok(ResultRes.successResult(null, OrderMessageConstants.UPDATE_SHIPPING_SUCCESS, 200));
     }
 }

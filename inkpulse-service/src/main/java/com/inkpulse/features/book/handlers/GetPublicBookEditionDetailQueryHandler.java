@@ -129,6 +129,15 @@ public class GetPublicBookEditionDetailQueryHandler
         // Query other editions of the same book
         List<BookEditionResponse> otherVersions = fetchOtherVersions(doc.getBookId());
 
+        String stockStatus;
+        if (doc.getStockQuantity() >= 10) {
+            stockStatus = "Còn hàng";
+        } else if (doc.getStockQuantity() > 0) {
+            stockStatus = "Chỉ còn " + doc.getStockQuantity() + " cuốn";
+        } else {
+            stockStatus = "Tạm hết hàng";
+        }
+
         PublicBookEditionDetailResponse detail = PublicBookEditionDetailResponse.builder()
                 .id(UUID.fromString(doc.getId()))
                 .isbn(doc.getIsbn())
@@ -137,6 +146,7 @@ public class GetPublicBookEditionDetailQueryHandler
                 .priceDisplay(BookEditionResponse.formatVnd(doc.getPrice()))
                 .oldPriceDisplay(BookEditionResponse.formatVnd(doc.getOldPrice()))
                 .stockQuantity(doc.getStockQuantity())
+                .stockStatus(stockStatus)
                 .editionNumber(doc.getEditionNumber())
                 .soldCount(doc.getSoldCount())
                 .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, doc.getThumbnailUrl(), useSsl))

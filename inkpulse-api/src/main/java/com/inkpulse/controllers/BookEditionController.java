@@ -177,7 +177,6 @@ public class BookEditionController {
             @RequestParam(value = "isbn", required = false) String isbn,
             @RequestParam(value = "price", required = false) BigDecimal price,
             @RequestParam(value = "oldPrice", required = false) BigDecimal oldPrice,
-            @RequestParam(value = "stockQuantity", required = false) Integer stockQuantity,
             @RequestParam(value = "editionNumber", required = false) Integer editionNumber,
             @RequestParam(value = "coverType", required = false) String coverType,
             @RequestParam(value = "pageCount", required = false) Integer pageCount,
@@ -259,7 +258,6 @@ public class BookEditionController {
                 .isbn(isbn)
                 .price(price)
                 .oldPrice(oldPrice)
-                .stockQuantity(stockQuantity)
                 .editionNumber(editionNumber)
                 .coverType(coverType)
                 .pageCount(pageCount)

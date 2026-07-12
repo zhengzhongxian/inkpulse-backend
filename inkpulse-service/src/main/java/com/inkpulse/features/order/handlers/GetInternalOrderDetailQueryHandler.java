@@ -70,7 +70,10 @@ public class GetInternalOrderDetailQueryHandler implements Query.QueryHandler<Ge
                     UrlHelper.buildAbsoluteUrl(publicUrl, edition.getThumbnailUrl(), useSsl),
                     detail.getQuantity(),
                     BookEditionResponse.formatVnd(detail.getOriginalPrice()),
-                    BookEditionResponse.formatVnd(subtotal)
+                    BookEditionResponse.formatVnd(subtotal),
+                    edition.getEditionNumber(),
+                    edition.getCoverType() != null ? edition.getCoverType().name() : null,
+                    edition.getIsbn()
             ));
         }
 

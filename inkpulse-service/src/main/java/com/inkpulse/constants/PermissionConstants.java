@@ -91,11 +91,36 @@ public final class PermissionConstants {
         public static final String ORDER = "Permissions.BookEditions.Order";
     }
 
+    public static final class Inventory {
+        private Inventory() {
+        }
+
+        public static final String MANAGE = "Permissions.Inventory.Manage";
+    }
+
     public static final class Orders {
         private Orders() {
         }
 
         public static final String PACK = "Permissions.Orders.Pack";
         public static final String INTERNAL_VIEW = "Permissions.Orders.InternalView";
+        public static final String CANCEL = "Permissions.Orders.Cancel";
+        public static final String RETURN = "Permissions.Orders.Return";
+    }
+
+    public static final class Refunds {
+        private Refunds() {
+        }
+
+        public static final String VIEW = "Permissions.Refunds.View";
+        public static final String APPROVE = "Permissions.Refunds.Approve";
+    }
+
+    public static final class SystemSettings {
+        private SystemSettings() {
+        }
+
+        public static final String VIEW = "Permissions.SystemSettings.View";
+        public static final String UPDATE = "Permissions.SystemSettings.Update";
     }
 }

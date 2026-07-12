@@ -11,7 +11,10 @@ import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import com.inkpulse.entities.enums.OrderStatus;
+import com.inkpulse.entities.enums.PaymentMethod;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, UUID> {
@@ -35,5 +38,25 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
            "LOWER(o.receiverName) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     Page<Order> searchOrdersInternalNoStatus(
             @Param("keyword") String keyword,
+            Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE " +
+           "(:status IS NULL OR o.orderStatus = :status) AND " +
+           "(:paymentMethod IS NULL OR o.paymentMethod = :paymentMethod) AND " +
+           "(:keyword IS NULL OR " +
+           "  LOWER(o.orderCode) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')) OR " +
+           "  LOWER(o.receiverName) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))) AND " +
+           "(CAST(:startDate AS LocalDateTime) IS NULL OR o.createdAt >= :startDate) AND " +
+           "(CAST(:endDate AS LocalDateTime) IS NULL OR o.createdAt <= :endDate) AND " +
+           "(:minAmount IS NULL OR (o.orderFee + o.shippingFee) >= :minAmount) AND " +
+           "(:maxAmount IS NULL OR (o.orderFee + o.shippingFee) <= :maxAmount)")
+    Page<Order> searchOrdersInternalAllFilters(
+            @Param("status") OrderStatus status,
+            @Param("paymentMethod") PaymentMethod paymentMethod,
+            @Param("keyword") String keyword,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("minAmount") BigDecimal minAmount,
+            @Param("maxAmount") BigDecimal maxAmount,
             Pageable pageable);
 }

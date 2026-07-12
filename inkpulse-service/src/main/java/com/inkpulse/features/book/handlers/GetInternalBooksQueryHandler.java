@@ -89,6 +89,23 @@ public class GetInternalBooksQueryHandler
             coverType = null;
         }
 
+        java.time.LocalDateTime startDateTime = null;
+        if (query.getStartDate() != null && !query.getStartDate().trim().isEmpty()) {
+            try {
+                startDateTime = java.time.LocalDate.parse(query.getStartDate().trim()).atStartOfDay();
+            } catch (Exception e) {
+                log.warn("Failed to parse startDate: {}", query.getStartDate(), e);
+            }
+        }
+        java.time.LocalDateTime endDateTime = null;
+        if (query.getEndDate() != null && !query.getEndDate().trim().isEmpty()) {
+            try {
+                endDateTime = java.time.LocalDate.parse(query.getEndDate().trim()).atTime(23, 59, 59);
+            } catch (Exception e) {
+                log.warn("Failed to parse endDate: {}", query.getEndDate(), e);
+            }
+        }
+
         Page<Book> bookPage = bookRepository.searchBooksInternal(
                 categorySlug,
                 keyword,
@@ -97,6 +114,8 @@ public class GetInternalBooksQueryHandler
                 query.getMinPrice(),
                 query.getMaxPrice(),
                 query.getActive(),
+                startDateTime,
+                endDateTime,
                 pageable);
 
         return PagedList.fromPage(bookPage, this::mapToResponse);

@@ -21,10 +21,12 @@ public class GetInternalBooksQuery extends PagedRequest implements Query<PagedLi
     private String coverType;
     private String authorName;
     private Boolean active;
+    private String startDate;
+    private String endDate;
 
     public GetInternalBooksQuery(int pageNumber, int pageSize, String searchKeyword, String categorySlug,
                                  String sortBy, String sortDirection, BigDecimal minPrice, BigDecimal maxPrice,
-                                 String coverType, String authorName, Boolean active) {
+                                 String coverType, String authorName, Boolean active, String startDate, String endDate) {
         this.setPageNumber(pageNumber);
         this.setPageSize(pageSize);
         this.setSearchKeyword(searchKeyword);
@@ -36,5 +38,7 @@ public class GetInternalBooksQuery extends PagedRequest implements Query<PagedLi
         this.coverType = coverType;
         this.authorName = authorName;
         this.active = active;
+        this.startDate = startDate;
+        this.endDate = endDate;
     }
 }

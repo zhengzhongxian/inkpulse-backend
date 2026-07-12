@@ -1,4 +1,4 @@
-package com.inkpulse.models.message;
+package com.inkpulse.features.order.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
