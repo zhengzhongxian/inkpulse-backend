@@ -6,6 +6,8 @@
 *.iml
 target/
 **/target/
+!inkpulse-api/target/*.jar
+!**/target/*.jar
 scripts/
 [Ll]ogs/
 *.log
