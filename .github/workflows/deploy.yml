@@ -67,6 +67,8 @@ jobs:
             --project renticar-478014
 
       - name: Smart ConfigMap Update & Deploy
+        env:
+          CONFIG_SECRET_CONTENT: ${{ secrets.CONFIG_APPLICATION_YML }}
         run: |
           # Smart normalization helper function (ignores CRLF/LF & empty trailing lines)
           normalize_hash() {
@@ -78,8 +80,8 @@ jobs:
 
           # 2. Get new content from Secret or Repo File
           NEW_CONTENT=""
-          if [ -n "${{ secrets.CONFIG_APPLICATION_YML }}" ]; then
-            NEW_CONTENT="${{ secrets.CONFIG_APPLICATION_YML }}"
+          if [ -n "$CONFIG_SECRET_CONTENT" ]; then
+            NEW_CONTENT="$CONFIG_SECRET_CONTENT"
           elif [ -f inkpulse-api/src/main/resources/application.yml ]; then
             NEW_CONTENT=$(cat inkpulse-api/src/main/resources/application.yml)
           elif [ -f src/main/resources/application.yml ]; then
