@@ -93,4 +93,52 @@ jobs:
           if [ "$CONFIG_CHANGED" = true ]; then
             kubectl rollout restart deployment/backend-deployment
           fi
-          kubectl rollout status deployment/backend-deployment --timeout=150s
+          kubectl rollout status deployment/backend-deployment --timeout=150s || {
+            echo "❌ Deploy failed! Auto rolling back to previous version..."
+            kubectl rollout undo deployment/backend-deployment
+            exit 1
+          }
+
+      - name: Post-Deploy Health Check
+        run: |
+          echo "🔍 Running post-deploy health check..."
+          kubectl wait --for=condition=ready pod -l app=backend-core --timeout=120s || {
+            echo "❌ Health check failed! Pods not ready."
+            kubectl rollout undo deployment/backend-deployment
+            exit 1
+          }
+          READY=$(kubectl get deployment backend-deployment -o jsonpath='{.status.readyReplicas}')
+          DESIRED=$(kubectl get deployment backend-deployment -o jsonpath='{.spec.replicas}')
+          echo "✅ Health check passed: $READY/$DESIRED pods ready and serving traffic."
+
+      - name: 🔔 Send Discord Notification
+        if: always()
+        run: |
+          if [ -z "${{ secrets.DISCORD_WEBHOOK }}" ]; then
+            echo "⚠️ DISCORD_WEBHOOK secret not found. Skipping notification."
+            exit 0
+          fi
+
+          if [ "${{ job.status }}" = "success" ]; then
+            COLOR=3066993
+            TITLE="🚀 Backend Deploy Successful!"
+          else
+            COLOR=15158332
+            TITLE="❌ Backend Deploy Failed!"
+          fi
+
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"$TITLE\",
+                \"color\": $COLOR,
+                \"fields\": [
+                  {\"name\": \"Repository\", \"value\": \"${{ github.repository }}\", \"inline\": true},
+                  {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true},
+                  {\"name\": \"Author\", \"value\": \"${{ github.actor }}\", \"inline\": true},
+                  {\"name\": \"Commit\", \"value\": \"${{ github.event.head_commit.message }}\"}
+                ],
+                \"footer\": {\"text\": \"InkPulse CI/CD Bot\"}
+              }]
+            }" ${{ secrets.DISCORD_WEBHOOK }}
