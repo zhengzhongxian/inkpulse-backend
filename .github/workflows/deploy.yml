@@ -95,7 +95,7 @@ jobs:
           CONFIG_CHANGED=false
           if [ -n "$NEW_CONTENT" ] && [ "$OLD_HASH" != "$NEW_HASH" ]; then
             echo "⚡ ConfigMap inkpulse-config changed! Applying update..."
-            echo "$NEW_CONTENT" | kubectl create configmap inkpulse-config --from-file=application.yml=/dev/stdin -o yaml | kubectl apply -f -
+            echo "$NEW_CONTENT" | kubectl create configmap inkpulse-config --from-file=application.yml=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
             CONFIG_CHANGED=true
           else
             echo "✅ [SKIP] ConfigMap inkpulse-config has no meaningful changes (CRLF/whitespace ignored)."
