@@ -13,4 +13,5 @@ import java.util.UUID;
 public class OrderItemRequest {
     private UUID editionId;
     private int quantity;
+    private UUID flashSaleItemId;
 }

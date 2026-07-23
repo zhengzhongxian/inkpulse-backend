@@ -10,5 +10,11 @@ public record OrderItemDetailResponse(
     String subtotalDisplay,
     Integer editionNumber,
     String coverType,
-    String isbn
+    String isbn,
+    Boolean isFlashSale,
+    String flashSaleDiscountAmountDisplay,
+    String flashSaleItemId,
+    String oldPriceDisplay,
+    String voucherDiscountAmountDisplay,
+    Boolean isVoucherApplied
 ) {}

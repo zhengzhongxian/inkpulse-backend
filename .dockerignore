@@ -1,5 +1,11 @@
 .git
 .idea
+.vscode
 .opencode
-**/target
+.agents
 *.iml
+target/
+**/target/
+scripts/
+[Ll]ogs/
+*.log

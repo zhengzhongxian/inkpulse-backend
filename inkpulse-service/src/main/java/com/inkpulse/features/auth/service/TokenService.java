@@ -64,7 +64,16 @@ public class TokenService {
                     "local userId = redis.call('hget', tokenKey, 'user_id') " +
                     "local deviceId = redis.call('hget', tokenKey, 'device_id') " +
                     "local oldTokenId = redis.call('hget', tokenKey, 'token_id') " +
+                    "local timeTable = redis.call('time') " +
+                    "local now = tonumber(timeTable[1]) " +
                     "if is_revoked == 'true' then " +
+                    "    local rotatedAtStr = redis.call('hget', tokenKey, 'rotated_at') " +
+                    "    local rotatedAt = tonumber(rotatedAtStr or '0') " +
+                    "    if now - rotatedAt < 10 then " +
+                    "        local nextAccess = redis.call('hget', tokenKey, 'next_access_token') " +
+                    "        local nextRefresh = redis.call('hget', tokenKey, 'next_refresh_token') " +
+                    "        return {'RECENTLY_ROTATED', userId, deviceId, nextAccess or '', nextRefresh or ''} " +
+                    "    end " +
                     "    local keys = redis.call('keys', 'rt:*') " +
                     "    for _, k in ipairs(keys) do " +
                     "        local u = redis.call('hget', k, 'user_id') " +
@@ -76,6 +85,7 @@ public class TokenService {
                     "    return {'BREACH', userId, deviceId} " +
                     "else " +
                     "    redis.call('hset', tokenKey, 'is_revoked', 'true') " +
+                    "    redis.call('hset', tokenKey, 'rotated_at', tostring(now)) " +
                     "    return {'SUCCESS', userId, deviceId, oldTokenId} " +
                     "end",
             List.class);
@@ -170,8 +180,44 @@ public class TokenService {
             return new RotationResult(RotationStatus.BREACH, userId, deviceId, null);
         }
 
+        if ("RECENTLY_ROTATED".equals(results.get(0))) {
+            String nextAccessToken = results.size() > 3 ? results.get(3) : "";
+            String nextRefreshToken = results.size() > 4 ? results.get(4) : "";
+
+            if (nextAccessToken == null || nextAccessToken.isBlank() || nextRefreshToken == null || nextRefreshToken.isBlank()) {
+                log.info("Recently rotated tokens not yet saved in Redis hash, waiting and retrying...");
+                for (int i = 0; i < 5; i++) {
+                    try {
+                        Thread.sleep(50);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    Map<Object, Object> fields = redisTemplate.opsForHash().entries(key);
+                    nextAccessToken = (String) fields.get("next_access_token");
+                    nextRefreshToken = (String) fields.get("next_refresh_token");
+                    if (nextAccessToken != null && !nextAccessToken.isBlank() && nextRefreshToken != null && !nextRefreshToken.isBlank()) {
+                        break;
+                    }
+                }
+            }
+            return new RotationResult(RotationStatus.RECENTLY_ROTATED, userId, deviceId, null, nextAccessToken, nextRefreshToken);
+        }
+
         String oldTokenId = results.get(3);
         return new RotationResult(RotationStatus.SUCCESS, userId, deviceId, oldTokenId);
+    }
+
+    public void saveNextTokens(String rawToken, String nextAccessToken, String nextRefreshToken) {
+        try {
+            String tokenHash = sha256(rawToken);
+            String key = "rt:" + tokenHash;
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+                redisTemplate.opsForHash().put(key, "next_access_token", nextAccessToken);
+                redisTemplate.opsForHash().put(key, "next_refresh_token", nextRefreshToken);
+            }
+        } catch (Exception e) {
+            log.error("Failed to save next tokens for refresh token hash key", e);
+        }
     }
 
     public void revokeAllUserRefreshTokens(UUID userId) {
@@ -346,13 +392,19 @@ public class TokenService {
     }
 
     public enum RotationStatus {
-        SUCCESS, BREACH, NOT_FOUND
+        SUCCESS, BREACH, NOT_FOUND, RECENTLY_ROTATED
     }
 
     public record RotationResult(
             RotationStatus status,
             UUID userId,
             UUID deviceId,
-            String oldTokenId) {
+            String oldTokenId,
+            String nextAccessToken,
+            String nextRefreshToken) {
+
+        public RotationResult(RotationStatus status, UUID userId, UUID deviceId, String oldTokenId) {
+            this(status, userId, deviceId, oldTokenId, null, null);
+        }
     }
 }

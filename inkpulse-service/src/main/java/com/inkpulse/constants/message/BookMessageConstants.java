@@ -106,4 +106,10 @@ public final class BookMessageConstants {
     public static final String CODE_EDITION_NUMBER_INVALID = "BOOK_EDITION_NUMBER_INVALID";
     public static final String CODE_PAGE_COUNT_INVALID = "BOOK_EDITION_PAGE_COUNT_INVALID";
     public static final String CODE_PUBLICATION_YEAR_INVALID = "BOOK_EDITION_PUBLICATION_YEAR_INVALID";
+
+    // AI Vision Validation
+    public static final String AI_VISION_NOT_A_BOOK = "Ảnh bìa không phải là sách. Vui lòng tải lên ảnh bìa sách hợp lệ.";
+    public static final String CODE_AI_VISION_NOT_A_BOOK = "AI_VISION_NOT_A_BOOK";
+    public static final String AI_VISION_RATE_LIMIT_EXCEEDED = "Bạn đã vượt quá giới hạn phân tích ảnh AI. Vui lòng thử lại sau.";
+    public static final String CODE_AI_VISION_RATE_LIMIT_EXCEEDED = "AI_VISION_RATE_LIMIT_EXCEEDED";
 }

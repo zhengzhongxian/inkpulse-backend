@@ -107,6 +107,8 @@ public class GetInternalOrdersQueryHandler implements Query.QueryHandler<GetInte
                 endDateTime,
                 query.getMinAmount(),
                 query.getMaxAmount(),
+                query.getHasVoucher(),
+                query.getHasFlashSale(),
                 pageable
         );
 
@@ -126,7 +128,11 @@ public class GetInternalOrdersQueryHandler implements Query.QueryHandler<GetInte
                 }
             }
 
-            BigDecimal totalAmount = order.getOrderFee().add(order.getShippingFee());
+            BigDecimal discount = order.getVoucherDiscountAmount() != null ? order.getVoucherDiscountAmount() : BigDecimal.ZERO;
+            BigDecimal totalAmount = order.getOrderFee().add(order.getShippingFee()).subtract(discount);
+            if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
+                totalAmount = BigDecimal.ZERO;
+            }
 
             return new OrderSummaryResponse(
                     order.getId().toString(),

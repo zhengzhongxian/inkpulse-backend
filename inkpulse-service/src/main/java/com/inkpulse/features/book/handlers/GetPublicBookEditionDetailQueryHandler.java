@@ -15,6 +15,8 @@ import com.inkpulse.models.response.book.BookEditionResponse;
 import com.inkpulse.models.response.book.PublicBookEditionDetailResponse;
 import com.inkpulse.features.book.elastic.BookEditionDocument;
 import com.inkpulse.features.book.queries.GetPublicBookEditionDetailQuery;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService.FlashSaleItemInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -35,6 +38,7 @@ public class GetPublicBookEditionDetailQueryHandler
     private final ElasticsearchClient elasticsearchClient;
     private final ICacheService cacheService;
     private final CacheProperties cacheProperties;
+    private final ActiveFlashSaleLookupService activeFlashSaleLookupService;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -61,6 +65,7 @@ public class GetPublicBookEditionDetailQueryHandler
             PublicBookEditionDetailResponse cached = cacheService.get(cacheKey, PublicBookEditionDetailResponse.class);
             if (cached != null) {
                 log.debug("BookEdition detail cache hit for ID: {}", query.editionId());
+                applyFlashSaleOverrides(cached);
                 return cached;
             }
         } catch (Exception e) {
@@ -219,7 +224,56 @@ public class GetPublicBookEditionDetailQueryHandler
             log.error("Failed to save BookEdition detail to cache or register Sets for ID: {}", query.editionId(), e);
         }
 
+        applyFlashSaleOverrides(detail);
         return detail;
+    }
+
+    private void applyFlashSaleOverrides(PublicBookEditionDetailResponse detail) {
+        if (detail == null) {
+            return;
+        }
+
+        List<UUID> editionIds = new ArrayList<>();
+        editionIds.add(detail.getId());
+        if (detail.getOtherVersions() != null) {
+            for (BookEditionResponse ver : detail.getOtherVersions()) {
+                editionIds.add(ver.getId());
+            }
+        }
+
+        Map<UUID, FlashSaleItemInfo> flashSales = activeFlashSaleLookupService.getActiveFlashSalesByEditionIds(editionIds);
+
+        // Override main edition
+        FlashSaleItemInfo mainFs = flashSales.get(detail.getId());
+        if (mainFs != null) {
+            detail.setPrice(mainFs.getFlashSalePrice());
+            detail.setPriceDisplay(BookEditionResponse.formatVnd(mainFs.getFlashSalePrice()));
+            detail.setOldPrice(mainFs.getOriginalPrice());
+            detail.setOldPriceDisplay(BookEditionResponse.formatVnd(mainFs.getOriginalPrice()));
+            detail.setIsFlashSale(true);
+            detail.setFlashSaleItemId(mainFs.getFlashSaleItemId().toString());
+        } else {
+            detail.setIsFlashSale(false);
+            detail.setFlashSaleItemId(null);
+        }
+
+        // Override other versions
+        if (detail.getOtherVersions() != null) {
+            for (BookEditionResponse ver : detail.getOtherVersions()) {
+                FlashSaleItemInfo verFs = flashSales.get(ver.getId());
+                if (verFs != null) {
+                    ver.setPrice(verFs.getFlashSalePrice());
+                    ver.setPriceDisplay(BookEditionResponse.formatVnd(verFs.getFlashSalePrice()));
+                    ver.setOldPrice(verFs.getOriginalPrice());
+                    ver.setOldPriceDisplay(BookEditionResponse.formatVnd(verFs.getOriginalPrice()));
+                    ver.setIsFlashSale(true);
+                    ver.setFlashSaleItemId(verFs.getFlashSaleItemId().toString());
+                } else {
+                    ver.setIsFlashSale(false);
+                    ver.setFlashSaleItemId(null);
+                }
+            }
+        }
     }
 
     private List<BookEditionResponse> fetchOtherVersions(String bookId) {

@@ -2,6 +2,9 @@ package com.inkpulse.features.book.handlers;
 
 import com.inkpulse.cache.CacheProperties;
 import com.inkpulse.cache.ICacheService;
+import com.inkpulse.service.ai.IAIVisionGrpcService;
+import com.inkpulse.service.ai.AIVisionRateLimiter;
+import com.inkpulse.grpc.ai.ImageAnalysisResponse;
 import com.inkpulse.constants.KeyConstants;
 import com.inkpulse.constants.message.BookMessageConstants;
 import com.inkpulse.corehelpers.SlugHelper;
@@ -46,6 +49,8 @@ public class UpdateBookEditionCommandHandler
     private final CacheProperties cacheProperties;
     private final BadgeRepository badgeRepository;
     private final EditionBadgeRepository editionBadgeRepository;
+    private final IAIVisionGrpcService aiVisionGrpcService;
+    private final AIVisionRateLimiter aiVisionRateLimiter;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -125,18 +130,57 @@ public class UpdateBookEditionCommandHandler
         // 4. Upload Cover Thumbnail if provided
         UploadFileModel coverFile = cmd.getCoverFile();
         if (coverFile != null && coverFile.getInputStream() != null) {
+            byte[] coverBytes;
+            try {
+                coverBytes = coverFile.getInputStream().readAllBytes();
+            } catch (Exception e) {
+                log.error("Failed to read cover image bytes", e);
+                throw new BusinessValidationException(BookMessageConstants.READ_COVER_ERROR,
+                        BookMessageConstants.CODE_READ_COVER_ERROR);
+            }
+
+            // 1. Quota Check (Rate limit)
+            if (!aiVisionRateLimiter.isAllowed(cmd.getAdminId())) {
+                throw new BusinessValidationException(BookMessageConstants.AI_VISION_RATE_LIMIT_EXCEEDED,
+                        BookMessageConstants.CODE_AI_VISION_RATE_LIMIT_EXCEEDED);
+            }
+
+            // 2. gRPC AI Vision Analysis
+            try {
+                ImageAnalysisResponse analysis = aiVisionGrpcService.analyzeImage(
+                        coverBytes,
+                        coverFile.getFileName(),
+                        coverFile.getContentType());
+                if (analysis != null && !analysis.getIsBook()) {
+                    log.warn("AI Vision verification failed for file: {}. Reason: {}", coverFile.getFileName(),
+                            analysis.getReason());
+                    throw new BusinessValidationException(BookMessageConstants.AI_VISION_NOT_A_BOOK,
+                            BookMessageConstants.CODE_AI_VISION_NOT_A_BOOK);
+                }
+                log.info("AI Vision verification passed. Confidence: {}",
+                        analysis != null ? analysis.getConfidence() : 1.0);
+            } catch (BusinessValidationException bve) {
+                throw bve;
+            } catch (Exception e) {
+                // Fail-open strategy: log warning, proceed with upload when AI service is down
+                log.warn("AI Vision verification service unavailable. Proceeding with upload (Fail-Open). Error: {}",
+                        e.getMessage());
+            }
+
+            // Validate image constraints
             ImageHelper.validateImage(
                     coverFile.getContentType(),
                     coverFile.getFileSize(),
                     5 * 1024 * 1024L);
 
             UploadFileModel resizedFile = ImageHelper.resizeTo400x400(
-                    coverFile.getInputStream(),
+                    new java.io.ByteArrayInputStream(coverBytes),
                     coverFile.getFileName(),
                     coverFile.getContentType());
 
             String ext = ".jpg";
-            String coverObjectName = "editions/covers/" + edition.getId().toString() + "_" + slugTitle + ext;
+            String uniqueSuffix = UUID.randomUUID().toString().substring(0, 8);
+            String coverObjectName = "editions/covers/" + edition.getId().toString() + "_" + slugTitle + "_" + uniqueSuffix + ext;
             try {
                 minioService.uploadFile(
                         resizedFile.getInputStream(),
@@ -145,6 +189,15 @@ public class UpdateBookEditionCommandHandler
                         resizedFile.getFileSize(),
                         coverObjectName,
                         null);
+                // Delete old cover image to prevent ghost cache and keep MinIO clean
+                if (edition.getThumbnailUrl() != null && !edition.getThumbnailUrl().isBlank() && edition.getThumbnailUrl().contains("/")) {
+                    String oldObjectName = edition.getThumbnailUrl().substring(edition.getThumbnailUrl().indexOf("editions/covers/"));
+                    try {
+                        minioService.deleteFile(oldObjectName);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete old edition cover file from MinIO: {}", oldObjectName, e);
+                    }
+                }
                 edition.setThumbnailUrl("books/" + coverObjectName);
             } catch (Exception ex) {
                 log.error("Failed to upload updated edition cover to MinIO. Edition ID: {}", edition.getId(), ex);

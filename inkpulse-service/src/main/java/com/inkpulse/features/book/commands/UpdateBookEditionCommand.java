@@ -60,6 +60,7 @@ public class UpdateBookEditionCommand implements Command<BookEditionResponse> {
 
     private UUID publisherId;
     private List<UUID> badgeIds;
+    private String adminId;
     private UploadFileModel coverFile;
     private UploadFileModel pdfFile;
     private List<UploadFileModel> additionalImages;

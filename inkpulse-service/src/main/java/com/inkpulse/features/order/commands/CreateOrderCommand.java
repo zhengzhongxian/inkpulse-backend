@@ -26,4 +26,5 @@ public class CreateOrderCommand implements Command<CreateOrderResponse> {
     private List<OrderItemRequest> items;
     private String source;
     private List<UUID> cartItemIds;
+    private String voucherCode;
 }

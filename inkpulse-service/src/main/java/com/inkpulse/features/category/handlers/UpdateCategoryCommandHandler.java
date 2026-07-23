@@ -102,6 +102,7 @@ public class UpdateCategoryCommandHandler implements Command.CommandHandler<Upda
                 .name(saved.getName())
                 .slug(saved.getSlug())
                 .parentId(saved.getParent() != null ? saved.getParent().getId() : null)
+                .createdAt(saved.getCreatedAt())
                 .build();
     }
 

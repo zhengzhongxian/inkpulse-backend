@@ -65,6 +65,9 @@ public class Voucher extends BaseAuditableEntity<UUID> {
     @Column(name = "target_type", nullable = false, length = 50)
     private VoucherTargetType targetType;
 
+    @Column(name = "max_discount_amount", precision = 19, scale = 4)
+    private BigDecimal maxDiscountAmount;
+
     @Version
     @Column(name = "version", nullable = false)
     @Builder.Default

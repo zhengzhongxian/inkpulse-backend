@@ -64,6 +64,7 @@ public class CreateBookEditionCommand implements Command<BookEditionResponse> {
 
     private UUID publisherId;
     private List<UUID> badgeIds;
+    private String adminId;
 
     // Upload Files
     private UploadFileModel coverFile;

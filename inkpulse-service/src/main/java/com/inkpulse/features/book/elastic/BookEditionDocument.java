@@ -36,6 +36,14 @@ public class BookEditionDocument {
     @JsonProperty("old_price")
     private BigDecimal oldPrice;
 
+    @Field(name = "flash_sale_price", type = FieldType.Double)
+    @JsonProperty("flash_sale_price")
+    private BigDecimal flashSalePrice;
+
+    @Field(name = "flash_sale_item_id", type = FieldType.Keyword)
+    @JsonProperty("flash_sale_item_id")
+    private String flashSaleItemId;
+
     @Field(name = "stock_quantity", type = FieldType.Integer)
     @JsonProperty("stock_quantity")
     private int stockQuantity;

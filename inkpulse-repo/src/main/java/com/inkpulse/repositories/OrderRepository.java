@@ -49,7 +49,11 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
            "(CAST(:startDate AS LocalDateTime) IS NULL OR o.createdAt >= :startDate) AND " +
            "(CAST(:endDate AS LocalDateTime) IS NULL OR o.createdAt <= :endDate) AND " +
            "(:minAmount IS NULL OR (o.orderFee + o.shippingFee) >= :minAmount) AND " +
-           "(:maxAmount IS NULL OR (o.orderFee + o.shippingFee) <= :maxAmount)")
+           "(:maxAmount IS NULL OR (o.orderFee + o.shippingFee) <= :maxAmount) AND " +
+           "(:hasVoucher IS NULL OR (:hasVoucher = true AND o.voucher IS NOT NULL) OR (:hasVoucher = false AND o.voucher IS NULL)) AND " +
+           "(:hasFlashSale IS NULL OR " +
+           "  (:hasFlashSale = true AND EXISTS (SELECT 1 FROM OrderDetail od WHERE od.order = o AND od.flashSale IS NOT NULL)) OR " +
+           "  (:hasFlashSale = false AND NOT EXISTS (SELECT 1 FROM OrderDetail od WHERE od.order = o AND od.flashSale IS NOT NULL)))")
     Page<Order> searchOrdersInternalAllFilters(
             @Param("status") OrderStatus status,
             @Param("paymentMethod") PaymentMethod paymentMethod,
@@ -58,5 +62,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             @Param("endDate") LocalDateTime endDate,
             @Param("minAmount") BigDecimal minAmount,
             @Param("maxAmount") BigDecimal maxAmount,
+            @Param("hasVoucher") Boolean hasVoucher,
+            @Param("hasFlashSale") Boolean hasFlashSale,
             Pageable pageable);
 }

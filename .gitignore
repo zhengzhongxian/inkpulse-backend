@@ -1,49 +1,38 @@
+# Maven build output
 target/
+**/target/
 !.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+
+# Kotlin
 .kotlin
 
-### InkPulse Excludes ###
+# Configuration & Secrets with sensitive credentials
 **/application.yml
+**/application-*.yml
+!**/application-example.yml
+.env
+.env.*
+*.key
+*.pem
+
+# Local scripts & Agent configs
 scripts/
 .opencode/
+.agents/
+
+# IDE & Editor Settings
 .idea/
-
-### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-*.iws
 *.iml
+*.iws
 *.ipr
-
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
 .vscode/
+.eclipse/
+.classpath
+.project
+.settings/
 
-### Mac OS ###
+# Logs & Temp files
+[Ll]ogs/
+*.log
 .DS_Store
-
-# AI Agent rules
-[Aa][Gg][Ee][Nn][Tt][Ss].md
-[Aa][Gg][Ee][Nn][Tt].md
+Thumbs.db

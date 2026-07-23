@@ -1,0 +1,96 @@
+name: Deploy Backend Service
+
+on:
+  push:
+    branches: [ main, master ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/inkpulse-backend
+
+jobs:
+  build-and-deploy:
+    name: ☕ Build & Deploy Java Backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn clean verify -DskipTests=true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Set up Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+
+      - name: Smart ConfigMap Update & Deploy
+        run: |
+          # Smart normalization helper function (ignores CRLF/LF & empty trailing lines)
+          normalize_hash() {
+            echo "$1" | tr -d '\r' | sed -e 's/[[:space:]]*$//' -e '/^$/d' | sha256sum | awk '{print $1}'
+          }
+
+          # 1. Fetch current ConfigMap from K8s
+          OLD_CONTENT=$(kubectl get configmap inkpulse-config -o jsonpath='{.data.application\.yml}' 2>/dev/null || echo "")
+
+          # 2. Get new content from Secret or Repo File
+          NEW_CONTENT=""
+          if [ -n "${{ secrets.CONFIG_APPLICATION_YML }}" ]; then
+            NEW_CONTENT="${{ secrets.CONFIG_APPLICATION_YML }}"
+          elif [ -f inkpulse-api/src/main/resources/application.yml ]; then
+            NEW_CONTENT=$(cat inkpulse-api/src/main/resources/application.yml)
+          elif [ -f src/main/resources/application.yml ]; then
+            NEW_CONTENT=$(cat src/main/resources/application.yml)
+          fi
+
+          # 3. Compare normalized SHA256 hashes
+          OLD_HASH=$(normalize_hash "$OLD_CONTENT")
+          NEW_HASH=$(normalize_hash "$NEW_CONTENT")
+
+          CONFIG_CHANGED=false
+          if [ -n "$NEW_CONTENT" ] && [ "$OLD_HASH" != "$NEW_HASH" ]; then
+            echo "⚡ ConfigMap inkpulse-config changed! Applying update..."
+            echo "$NEW_CONTENT" | kubectl create configmap inkpulse-config --from-file=application.yml=/dev/stdin -o yaml | kubectl apply -f -
+            CONFIG_CHANGED=true
+          else
+            echo "✅ [SKIP] ConfigMap inkpulse-config has no meaningful changes (CRLF/whitespace ignored)."
+          fi
+
+          # 4. Set deployment image & rollout restart
+          kubectl set image deployment/backend-deployment app=${{ env.IMAGE_NAME }}:${{ github.sha }}
+          if [ "$CONFIG_CHANGED" = true ]; then
+            kubectl rollout restart deployment/backend-deployment
+          fi
+          kubectl rollout status deployment/backend-deployment --timeout=150s

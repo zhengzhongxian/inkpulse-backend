@@ -131,9 +131,11 @@ public class OrderController {
             @RequestParam(value = "endDate", required = false) String endDate,
             @RequestParam(value = "paymentMethod", required = false) String paymentMethod,
             @RequestParam(value = "minAmount", required = false) java.math.BigDecimal minAmount,
-            @RequestParam(value = "maxAmount", required = false) java.math.BigDecimal maxAmount) {
-        log.info("Request by admin to get internal orders: page={}, size={}, search={}, status={}, startDate={}, endDate={}, pm={}, minAmount={}, maxAmount={}",
-                page, size, search, status, startDate, endDate, paymentMethod, minAmount, maxAmount);
+            @RequestParam(value = "maxAmount", required = false) java.math.BigDecimal maxAmount,
+            @RequestParam(value = "hasVoucher", required = false) Boolean hasVoucher,
+            @RequestParam(value = "hasFlashSale", required = false) Boolean hasFlashSale) {
+        log.info("Request by admin to get internal orders: page={}, size={}, search={}, status={}, startDate={}, endDate={}, pm={}, minAmount={}, maxAmount={}, hasVoucher={}, hasFlashSale={}",
+                page, size, search, status, startDate, endDate, paymentMethod, minAmount, maxAmount, hasVoucher, hasFlashSale);
         GetInternalOrdersQuery query = new GetInternalOrdersQuery();
         query.setPageNumber(page);
         query.setPageSize(size);
@@ -144,6 +146,8 @@ public class OrderController {
         query.setPaymentMethod(paymentMethod);
         query.setMinAmount(minAmount);
         query.setMaxAmount(maxAmount);
+        query.setHasVoucher(hasVoucher);
+        query.setHasFlashSale(hasFlashSale);
         PagedList<OrderSummaryResponse> response = pipeline.send(query);
         return ResponseEntity.ok(ResultRes.successResult(response, OrderMessageConstants.GET_ORDERS_SUCCESS, 200));
     }

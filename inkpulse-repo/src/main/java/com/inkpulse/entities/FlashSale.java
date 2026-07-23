@@ -7,6 +7,9 @@ import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "flash_sales")
 @SQLRestriction("is_deleted = false")
@@ -18,19 +21,12 @@ import java.util.UUID;
 @Builder
 public class FlashSale extends BaseAuditableEntity<UUID> {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "book_edition_id", nullable = false)
-    private BookEdition bookEdition;
+    @Column(name = "name", nullable = false)
+    private String name;
 
-    @Column(name = "discount_amount", nullable = false, precision = 19, scale = 4)
-    private BigDecimal discountAmount;
-
-    @Column(name = "flash_sale_stock", nullable = false)
-    private Integer flashSaleStock;
-
-    @Column(name = "sold_count", nullable = false)
+    @OneToMany(mappedBy = "flashSale", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private Integer soldCount = 0;
+    private List<FlashSaleItem> items = new ArrayList<>();
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default

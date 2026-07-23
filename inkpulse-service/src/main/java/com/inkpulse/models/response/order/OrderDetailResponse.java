@@ -22,7 +22,9 @@ public record OrderDetailResponse(
     String shippingFeeDisplay,
     String totalDisplay,
     List<OrderItemDetailResponse> items,
-    String createdAt
+    String createdAt,
+    String voucherCode,
+    String voucherDiscountAmountDisplay
 ) implements Cacheable {
     @Override
     public String cacheId() {

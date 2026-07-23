@@ -4,5 +4,6 @@ public enum VoucherTargetType {
     ALL,
     CATEGORY,
     BOOK,
-    EDITION
+    EDITION,
+    SHIPPING
 }

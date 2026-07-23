@@ -15,6 +15,8 @@ import com.inkpulse.models.response.book.BookEditionResponse;
 import com.inkpulse.models.response.book.BookResponse;
 import com.inkpulse.features.book.elastic.BookEditionDocument;
 import com.inkpulse.features.book.queries.GetBooksQuery;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService.FlashSaleItemInfo;
 import com.inkpulse.models.pagination.PagedList;
 import com.inkpulse.repositories.BookRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,7 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
 
     private final ElasticsearchClient elasticsearchClient;
     private final BookRepository bookRepository;
+    private final ActiveFlashSaleLookupService activeFlashSaleLookupService;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -195,6 +198,7 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
                 list.add(bookRes);
             }
 
+            applyFlashSaleOverridesToList(list);
             long total = response.hits().total() != null ? response.hits().total().value() : 0;
             return new PagedList<>(list, (int) total, query.getPageNumber(), query.getPageSize());
 
@@ -242,7 +246,9 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
                 query.getMinPrice(),
                 query.getMaxPrice(),
                 pageable);
-        return PagedList.fromPage(bookPage, this::mapToResponse);
+        PagedList<BookResponse> pagedList = PagedList.fromPage(bookPage, this::mapToResponse);
+        applyFlashSaleOverridesToList(pagedList.getItems());
+        return pagedList;
     }
 
     private BookResponse mapToResponse(Book book) {
@@ -272,6 +278,36 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
         String badgeTextColor = book.getBadge() != null ? book.getBadge().getTextColor() : null;
         String badgeBgColor = book.getBadge() != null ? book.getBadge().getBgColor() : null;
 
+        List<BookEditionResponse> otherVersions = new ArrayList<>();
+        if (book.getEditions() != null) {
+            for (BookEdition edition : book.getEditions()) {
+                otherVersions.add(BookEditionResponse.builder()
+                        .id(edition.getId())
+                        .bookId(book.getId())
+                        .bookTitle(book.getTitle())
+                        .isbn(edition.getIsbn())
+                        .price(edition.getPrice())
+                        .oldPrice(edition.getOldPrice())
+                        .priceDisplay(BookEditionResponse.formatVnd(edition.getPrice()))
+                        .oldPriceDisplay(BookEditionResponse.formatVnd(edition.getOldPrice()))
+                        .stockQuantity(edition.getStockQuantity())
+                        .editionNumber(edition.getEditionNumber())
+                        .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, edition.getThumbnailUrl(), useSsl))
+                        .filePathPdf(edition.getFilePathPdf())
+                        .filePathPdfUrl(UrlHelper.buildAbsoluteUrl(pdfPublicUrl, edition.getFilePathPdf(), useSsl))
+                        .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
+                        .pageCount(edition.getPageCount())
+                        .publicationYear(edition.getPublicationYear())
+                        .widthCm(edition.getWidthCm())
+                        .heightCm(edition.getHeightCm())
+                        .lengthCm(edition.getLengthCm())
+                        .weightGram(edition.getWeightGram())
+                        .language(edition.getLanguage())
+                        .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
+                        .build());
+            }
+        }
+
         return BookResponse.builder()
                 .id(book.getId())
                 .title(book.getTitle())
@@ -284,6 +320,59 @@ public class GetBooksQueryHandler implements Query.QueryHandler<GetBooksQuery, P
                 .priceDisplay(priceDisplay)
                 .wasPriceDisplay(wasPriceDisplay)
                 .authors(authors)
+                .otherVersions(otherVersions)
                 .build();
+    }
+
+    private void applyFlashSaleOverridesToList(List<BookResponse> list) {
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+
+        List<UUID> allEditionIds = new ArrayList<>();
+        for (BookResponse bookRes : list) {
+            if (bookRes.getOtherVersions() != null) {
+                for (BookEditionResponse ver : bookRes.getOtherVersions()) {
+                    allEditionIds.add(ver.getId());
+                }
+            }
+        }
+
+        Map<UUID, FlashSaleItemInfo> flashSales = activeFlashSaleLookupService.getActiveFlashSalesByEditionIds(allEditionIds);
+
+        for (BookResponse bookRes : list) {
+            if (bookRes.getOtherVersions() == null || bookRes.getOtherVersions().isEmpty()) {
+                continue;
+            }
+
+            BigDecimal minPrice = null;
+            BigDecimal oldPriceForMinPrice = null;
+
+            for (BookEditionResponse ver : bookRes.getOtherVersions()) {
+                FlashSaleItemInfo fs = flashSales.get(ver.getId());
+                if (fs != null) {
+                    ver.setPrice(fs.getFlashSalePrice());
+                    ver.setPriceDisplay(BookEditionResponse.formatVnd(fs.getFlashSalePrice()));
+                    ver.setOldPrice(fs.getOriginalPrice());
+                    ver.setOldPriceDisplay(BookEditionResponse.formatVnd(fs.getOriginalPrice()));
+                    ver.setIsFlashSale(true);
+                    ver.setFlashSaleItemId(fs.getFlashSaleItemId().toString());
+                } else {
+                    ver.setIsFlashSale(false);
+                    ver.setFlashSaleItemId(null);
+                }
+
+                if (minPrice == null || ver.getPrice().compareTo(minPrice) < 0) {
+                    minPrice = ver.getPrice();
+                    oldPriceForMinPrice = ver.getOldPrice();
+                }
+            }
+
+            if (minPrice != null) {
+                bookRes.setMinPrice(minPrice);
+                bookRes.setPriceDisplay("Chỉ từ " + BookResponse.formatVnd(minPrice));
+                bookRes.setWasPriceDisplay(oldPriceForMinPrice != null ? BookResponse.formatVnd(oldPriceForMinPrice) : null);
+            }
+        }
     }
 }

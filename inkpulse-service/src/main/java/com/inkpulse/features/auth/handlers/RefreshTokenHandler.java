@@ -48,6 +48,20 @@ public class RefreshTokenHandler implements Command.CommandHandler<RefreshTokenC
             throw new TokenRefreshException(TokenMessageConstants.REUSE_DETECTED, 403, "TOKEN_BREACH");
         }
 
+        if (rotationResult.status() == RotationStatus.RECENTLY_ROTATED) {
+            String nextAccessToken = rotationResult.nextAccessToken();
+            String nextRefreshToken = rotationResult.nextRefreshToken();
+            if (nextAccessToken == null || nextAccessToken.isBlank() || nextRefreshToken == null || nextRefreshToken.isBlank()) {
+                throw new TokenRefreshException(TokenMessageConstants.INVALID, 401, "INVALID_TOKEN");
+            }
+            log.info("Re-using recently rotated tokens for user ID: {} (grace period hit)", userId);
+            return LoginResult.builder()
+                    .mfaRequired(false)
+                    .accessToken(nextAccessToken)
+                    .refreshToken(nextRefreshToken)
+                    .build();
+        }
+
         // 2. Happy Path: rotation success
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new TokenRefreshException(TokenMessageConstants.INVALID, 401, "INVALID_TOKEN"));
@@ -57,6 +71,9 @@ public class RefreshTokenHandler implements Command.CommandHandler<RefreshTokenC
 
         String newAccessToken = tokenService.generateAccessToken(userId, user.getUsername(), newJti);
         String newRefreshToken = tokenService.generateRefreshToken(userId, deviceId, newJti, rotationResult.oldTokenId());
+
+        // Save newly generated tokens in the old token's Redis key for grace period concurrency
+        tokenService.saveNextTokens(rawToken, newAccessToken, newRefreshToken);
 
         log.info("Token rotated successfully for user: {}, device: {}", user.getUsername(), deviceId);
 

@@ -17,4 +17,6 @@ public class GetInternalOrdersQuery extends PagedRequest implements Query<PagedL
     private String paymentMethod;
     private BigDecimal minAmount;
     private BigDecimal maxAmount;
+    private Boolean hasVoucher;
+    private Boolean hasFlashSale;
 }

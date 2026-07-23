@@ -101,6 +101,7 @@ public class GetCategoriesQueryHandler implements Query.QueryHandler<GetCategori
                 .name(category.getName())
                 .slug(category.getSlug())
                 .parentId(category.getParent() != null ? category.getParent().getId() : null)
+                .createdAt(category.getCreatedAt())
                 .build();
     }
 }

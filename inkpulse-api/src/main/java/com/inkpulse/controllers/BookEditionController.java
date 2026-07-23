@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -41,6 +42,7 @@ public class BookEditionController {
     @PostMapping(value = "/api/v1/book-editions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('" + PermissionConstants.Books.CREATE + "')")
     public ResponseEntity<ResultRes<BookEditionResponse>> createBookEdition(
+            @AuthenticationPrincipal String adminId,
             @RequestParam("bookId") UUID bookId,
             @RequestParam("isbn") String isbn,
             @RequestParam("price") BigDecimal price,
@@ -121,6 +123,7 @@ public class BookEditionController {
         }
 
         CreateBookEditionCommand cmd = CreateBookEditionCommand.builder()
+                .adminId(adminId)
                 .bookId(bookId)
                 .isbn(isbn)
                 .price(price)
@@ -173,6 +176,7 @@ public class BookEditionController {
     @PatchMapping(value = "/api/v1/book-editions/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('" + PermissionConstants.Books.EDIT + "')")
     public ResponseEntity<ResultRes<BookEditionResponse>> updateBookEdition(
+            @AuthenticationPrincipal String adminId,
             @PathVariable("id") UUID id,
             @RequestParam(value = "isbn", required = false) String isbn,
             @RequestParam(value = "price", required = false) BigDecimal price,
@@ -254,6 +258,7 @@ public class BookEditionController {
         }
 
         UpdateBookEditionCommand cmd = UpdateBookEditionCommand.builder()
+                .adminId(adminId)
                 .id(id)
                 .isbn(isbn)
                 .price(price)

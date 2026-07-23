@@ -43,6 +43,10 @@ public class BookEditionResponse {
     private String language;
     private String publisherName;
 
+    private Boolean isFlashSale;
+    private String flashSaleItemId;
+    private BigDecimal flashSalePrice;
+
     public static String formatVnd(BigDecimal price) {
         if (price == null) {
             return null;

@@ -47,6 +47,16 @@ public class RedisCacheService implements ICacheService {
         return redisTemplate.opsForValue().get(key);
     }
 
+    @Override
+    public Long increment(String key) {
+        return redisTemplate.opsForValue().increment(key);
+    }
+
+    @Override
+    public void expire(String key, Duration expiry) {
+        redisTemplate.expire(key, expiry);
+    }
+
     // ─── Typed Object ─────────────────────────────────────────────────
 
     @Override
@@ -197,6 +207,11 @@ public class RedisCacheService implements ICacheService {
         redisTemplate.opsForHash().delete(key, field);
     }
 
+    @Override
+    public Long hashIncrement(String key, String field, long delta) {
+        return redisTemplate.opsForHash().increment(key, field, delta);
+    }
+
     // ─── Set ─────────────────────────────────────────────────────────
 
     @Override
@@ -224,5 +239,11 @@ public class RedisCacheService implements ICacheService {
         if (members == null || members.length == 0)
             return;
         redisTemplate.opsForSet().remove(key, (Object[]) members);
+    }
+
+    @Override
+    public boolean sismember(String key, String member) {
+        Boolean isMember = redisTemplate.opsForSet().isMember(key, member);
+        return isMember != null && isMember;
     }
 }

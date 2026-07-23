@@ -15,5 +15,6 @@ public final class CartMessageConstants {
     public static final String GET_MY_CART_SUCCESS = "Lấy danh sách giỏ hàng thành công!";
     public static final String CART_ITEM_NOT_FOUND = "Không tìm thấy sản phẩm trong giỏ hàng!";
     public static final String INVALID_QUANTITY = "Số lượng không hợp lệ!";
+    public static final String CART_TOTAL_QTY_LIMIT_EXCEEDED = "Tổng số lượng sách trong giỏ hàng không được vượt quá %d cuốn!";
 }
 

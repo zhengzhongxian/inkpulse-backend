@@ -123,4 +123,24 @@ public final class PermissionConstants {
         public static final String VIEW = "Permissions.SystemSettings.View";
         public static final String UPDATE = "Permissions.SystemSettings.Update";
     }
+
+    public static final class Vouchers {
+        private Vouchers() {
+        }
+
+        public static final String VIEW = "Permissions.Vouchers.View";
+        public static final String CREATE = "Permissions.Vouchers.Create";
+        public static final String EDIT = "Permissions.Vouchers.Edit";
+        public static final String DELETE = "Permissions.Vouchers.Delete";
+    }
+
+    public static final class FlashSales {
+        private FlashSales() {
+        }
+
+        public static final String VIEW = "Permissions.FlashSales.View";
+        public static final String CREATE = "Permissions.FlashSales.Create";
+        public static final String EDIT = "Permissions.FlashSales.Edit";
+        public static final String DELETE = "Permissions.FlashSales.Delete";
+    }
 }

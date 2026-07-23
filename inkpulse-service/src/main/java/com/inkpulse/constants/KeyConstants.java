@@ -35,6 +35,12 @@ public final class KeyConstants {
     public static final String SECTION_BOOK_EDITIONS = "redis:book_editions";
     public static final String SECTION_ORDER_DETAIL = "redis:order_detail";
     public static final String SECTION_MY_ORDERS = "redis:my_orders";
+    public static final String SECTION_VOUCHER_DETAIL = "redis:voucher_detail";
+    public static final String SECTION_COIN_PENDING_DELTAS = "redis:coin_pending_deltas";
+    public static final String SECTION_FLASHSALE_STOCK = "redis:flashsale_stock";
+    public static final String SECTION_FLASHSALE_BUYERS = "redis:flashsale_buyers";
+    public static final String SECTION_AI_VISION_RATE = "redis:ai_vision_rate";
+    public static final String SECTION_AI_CHAT_RATE = "redis:ai_chat_rate";
 
     public static final String CATEGORY_LOCK_RETRY_TIMEOUT = "cache.lock.category.retry-timeout-seconds";
     public static final String CATEGORY_LOCK_RETRY_INTERVAL = "cache.lock.category.retry-interval-ms";
@@ -85,4 +91,10 @@ public final class KeyConstants {
     public static final String PAYOS_RETURN_URL = "payos.return-url";
     public static final String PAYOS_CANCEL_URL = "payos.cancel-url";
     public static final String PAYOS_EXPIRY_MINUTES = "payos.expiry-minutes";
+
+    // AI Vision Configs
+    public static final String AI_VISION_GRPC_HOST = "ai.vision.grpc.host";
+    public static final String AI_VISION_GRPC_PORT = "ai.vision.grpc.port";
+    public static final String AI_VISION_GRPC_TIMEOUT = "ai.vision.grpc.timeout-seconds";
+    public static final String AI_VISION_RATE_LIMIT_MAX = "ai.vision.rate-limit.max-per-hour";
 }

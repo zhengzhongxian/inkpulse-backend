@@ -1,5 +1,9 @@
 package com.inkpulse.features.user.handlers;
 
+import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.UrlHelper;
+import com.inkpulse.cache.CacheProperties;
+import com.inkpulse.cache.ICacheService;
 import com.inkpulse.cache.SectionCacheService;
 import com.inkpulse.corehelpers.exceptions.ResourceNotFoundException;
 import com.inkpulse.entities.User;
@@ -11,6 +15,7 @@ import com.inkpulse.repositories.MfaConfigRepository;
 import com.inkpulse.cqrs.Query;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -19,102 +24,164 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class GetUserProfileByUserIdQueryHandler implements Query.QueryHandler<GetUserProfileByUserIdQuery, UserProfileCacheDto> {
+public class GetUserProfileByUserIdQueryHandler
+                implements Query.QueryHandler<GetUserProfileByUserIdQuery, UserProfileCacheDto> {
 
-    private final UserRepository userRepository;
-    private final MfaConfigRepository mfaConfigRepository;
-    private final SectionCacheService sectionCache;
+        private final UserRepository userRepository;
+        private final MfaConfigRepository mfaConfigRepository;
+        private final SectionCacheService sectionCache;
+        private final ICacheService cacheService;
+        private final CacheProperties cacheProperties;
 
-    @Override
-    @Transactional(readOnly = true)
-    public UserProfileCacheDto handle(GetUserProfileByUserIdQuery query) {
-        String userIdStr = query.userId().toString();
+        @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
+        private String publicUrl;
 
-        // 1. Try to read from cache (Cache-Aside Pattern)
-        UserProfileCacheDto cachedProfile = sectionCache.get(userIdStr, UserProfileCacheDto.class);
-        if (cachedProfile != null) {
-            log.debug("Cache hit for user profile of user: {}", userIdStr);
-            return cachedProfile;
+        @Value("${storage.use-ssl:false}")
+        private boolean useSsl;
+
+        @Override
+        @Transactional(readOnly = true)
+        public UserProfileCacheDto handle(GetUserProfileByUserIdQuery query) {
+                String userIdStr = query.userId().toString();
+
+                // 1. Try to read from cache (Cache-Aside Pattern)
+                UserProfileCacheDto cachedProfile = sectionCache.get(userIdStr, UserProfileCacheDto.class);
+                if (cachedProfile != null) {
+                        log.debug("Cache hit for user profile of user: {}", userIdStr);
+                        String coinDeltaKey = cacheProperties.buildKey(KeyConstants.SECTION_COIN_PENDING_DELTAS, "");
+                        String pendingDeltaStr = cacheService.hashGet(coinDeltaKey, userIdStr);
+                        long pendingDelta = pendingDeltaStr != null ? Long.parseLong(pendingDeltaStr) : 0L;
+                        if (pendingDelta != 0) {
+                                return new UserProfileCacheDto(
+                                                cachedProfile.userId(),
+                                                cachedProfile.username(),
+                                                cachedProfile.email(),
+                                                cachedProfile.firstName(),
+                                                cachedProfile.lastName(),
+                                                cachedProfile.fullName(),
+                                                cachedProfile.gender(),
+                                                cachedProfile.dob(),
+                                                cachedProfile.avatarUrl(),
+                                                cachedProfile.biography(),
+                                                cachedProfile.timezone(),
+                                                cachedProfile.displayMode(),
+                                                cachedProfile.choiceLanguage(),
+                                                cachedProfile.mfaEnabled(),
+                                                cachedProfile.mfaTypes(),
+                                                cachedProfile.coinBalance() + pendingDelta,
+                                                cachedProfile.isSocialAccount(),
+                                                cachedProfile.addresses());
+                        }
+                        return cachedProfile;
+                }
+
+                log.debug("Cache miss for user profile of user: {}. Fetching from DB...", userIdStr);
+
+                // 2. Cache miss: Fetch from database
+                User user = userRepository.findById(query.userId())
+                                .orElseThrow(() -> new ResourceNotFoundException("User", "id", query.userId()));
+
+                UserProfile profile = user.getProfile();
+                if (profile == null) {
+                        throw new ResourceNotFoundException("UserProfile", "userId", query.userId());
+                }
+
+                var setting = user.getSetting();
+                String displayMode = (setting != null && setting.getDisplayMode() != null)
+                                ? setting.getDisplayMode().name()
+                                : "SYSTEM";
+                String choiceLanguage = (setting != null && setting.getChoiceLanguage() != null)
+                                ? setting.getChoiceLanguage().name()
+                                : "VI";
+
+                // Fetch active MFA configuration types for the user
+                List<String> mfaTypes = mfaConfigRepository.findAllByUserId(query.userId()).stream()
+                                .map(config -> config.getMfaType().getTypeName().name())
+                                .toList();
+
+                // 3. Map to DTO
+                List<UserProfileCacheDto.UserAddressCacheDto> addressDtos = user.getAddresses().stream()
+                                .filter(addr -> !addr.isDeleted())
+                                .sorted((a, b) -> {
+                                        LocalDateTime atA = a.getLastUsedAt();
+                                        LocalDateTime atB = b.getLastUsedAt();
+                                        if (atA == null && atB == null) {
+                                                return b.getCreatedAt().compareTo(a.getCreatedAt());
+                                        }
+                                        if (atA == null)
+                                                return 1;
+                                        if (atB == null)
+                                                return -1;
+                                        int comp = atB.compareTo(atA);
+                                        return comp != 0 ? comp : b.getCreatedAt().compareTo(a.getCreatedAt());
+                                })
+                                .map(addr -> new UserProfileCacheDto.UserAddressCacheDto(
+                                                addr.getId().toString(),
+                                                addr.getRecipientPhone(),
+                                                addr.getProvince().getProvinceId(),
+                                                addr.getProvince().getProvinceName(),
+                                                addr.getDistrict().getDistrictId(),
+                                                addr.getDistrict().getDistrictName(),
+                                                addr.getWard().getWardCode(),
+                                                addr.getWard().getWardName(),
+                                                addr.getStreetAddress(),
+                                                addr.getAddressLabel(),
+                                                addr.getLastUsedAt()))
+                                .toList();
+
+                String absoluteAvatarUrl = UrlHelper.buildAbsoluteUrl(publicUrl, profile.getAvatarUrl(), useSsl);
+
+                String coinDeltaKey = cacheProperties.buildKey(KeyConstants.SECTION_COIN_PENDING_DELTAS, "");
+                String pendingDeltaStr = cacheService.hashGet(coinDeltaKey, userIdStr);
+                long pendingDelta = pendingDeltaStr != null ? Long.parseLong(pendingDeltaStr) : 0L;
+                long dbCoinBalance = profile.getCoinBalance() != null ? profile.getCoinBalance() : 0L;
+
+                UserProfileCacheDto profileDto = new UserProfileCacheDto(
+                                user.getId().toString(),
+                                user.getUsername(),
+                                user.getEmail(),
+                                profile.getFirstName(),
+                                profile.getLastName(),
+                                profile.getFullName(),
+                                profile.getGender() != null ? profile.getGender().name() : "UNKNOWN",
+                                profile.getDob(),
+                                absoluteAvatarUrl,
+                                profile.getBiography(),
+                                profile.getTimezone(),
+                                displayMode,
+                                choiceLanguage,
+                                user.isMfaEnabled(),
+                                mfaTypes,
+                                dbCoinBalance,
+                                user.getPassword() == null,
+                                addressDtos);
+
+                // 4. Save to cache for subsequent reads
+                sectionCache.set(profileDto);
+                log.debug("Saved user profile to cache for user: {}", userIdStr);
+
+                if (pendingDelta != 0) {
+                        return new UserProfileCacheDto(
+                                        profileDto.userId(),
+                                        profileDto.username(),
+                                        profileDto.email(),
+                                        profileDto.firstName(),
+                                        profileDto.lastName(),
+                                        profileDto.fullName(),
+                                        profileDto.gender(),
+                                        profileDto.dob(),
+                                        profileDto.avatarUrl(),
+                                        profileDto.biography(),
+                                        profileDto.timezone(),
+                                        profileDto.displayMode(),
+                                        profileDto.choiceLanguage(),
+                                        profileDto.mfaEnabled(),
+                                        profileDto.mfaTypes(),
+                                        dbCoinBalance + pendingDelta,
+                                        profileDto.isSocialAccount(),
+                                        profileDto.addresses());
+                }
+
+                return profileDto;
         }
-
-        log.debug("Cache miss for user profile of user: {}. Fetching from DB...", userIdStr);
-
-        // 2. Cache miss: Fetch from database
-        User user = userRepository.findById(query.userId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", query.userId()));
-
-        UserProfile profile = user.getProfile();
-        if (profile == null) {
-            throw new ResourceNotFoundException("UserProfile", "userId", query.userId());
-        }
-
-        var setting = user.getSetting();
-        String displayMode = (setting != null && setting.getDisplayMode() != null) 
-                ? setting.getDisplayMode().name() 
-                : "SYSTEM";
-        String choiceLanguage = (setting != null && setting.getChoiceLanguage() != null) 
-                ? setting.getChoiceLanguage().name() 
-                : "VI";
-
-        // Fetch active MFA configuration types for the user
-        List<String> mfaTypes = mfaConfigRepository.findAllByUserId(query.userId()).stream()
-                .map(config -> config.getMfaType().getTypeName().name())
-                .toList();
-
-        // 3. Map to DTO
-        List<UserProfileCacheDto.UserAddressCacheDto> addressDtos = user.getAddresses().stream()
-                .filter(addr -> !addr.isDeleted())
-                .sorted((a, b) -> {
-                    LocalDateTime atA = a.getLastUsedAt();
-                    LocalDateTime atB = b.getLastUsedAt();
-                    if (atA == null && atB == null) {
-                        return b.getCreatedAt().compareTo(a.getCreatedAt());
-                    }
-                    if (atA == null) return 1;
-                    if (atB == null) return -1;
-                    int comp = atB.compareTo(atA);
-                    return comp != 0 ? comp : b.getCreatedAt().compareTo(a.getCreatedAt());
-                })
-                .map(addr -> new UserProfileCacheDto.UserAddressCacheDto(
-                        addr.getId().toString(),
-                        addr.getRecipientPhone(),
-                        addr.getProvince().getProvinceId(),
-                        addr.getProvince().getProvinceName(),
-                        addr.getDistrict().getDistrictId(),
-                        addr.getDistrict().getDistrictName(),
-                        addr.getWard().getWardCode(),
-                        addr.getWard().getWardName(),
-                        addr.getStreetAddress(),
-                        addr.getAddressLabel(),
-                        addr.getLastUsedAt()
-                ))
-                .toList();
-
-        UserProfileCacheDto profileDto = new UserProfileCacheDto(
-                user.getId().toString(),
-                user.getUsername(),
-                user.getEmail(),
-                profile.getFirstName(),
-                profile.getLastName(),
-                profile.getFullName(),
-                profile.getGender() != null ? profile.getGender().name() : "UNKNOWN",
-                profile.getDob(),
-                profile.getAvatarUrl(),
-                profile.getBiography(),
-                profile.getTimezone(),
-                displayMode,
-                choiceLanguage,
-                user.isMfaEnabled(),
-                mfaTypes,
-                profile.getCoinBalance(),
-                user.getPassword() == null,
-                addressDtos
-        );
-
-        // 4. Save to cache for subsequent reads
-        sectionCache.set(profileDto);
-        log.debug("Saved user profile to cache for user: {}", userIdStr);
-
-        return profileDto;
-    }
 }

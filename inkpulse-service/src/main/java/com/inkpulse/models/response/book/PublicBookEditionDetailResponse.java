@@ -53,6 +53,9 @@ public class PublicBookEditionDetailResponse {
     // Other editions of the same book
     private List<BookEditionResponse> otherVersions;
 
+    private Boolean isFlashSale;
+    private String flashSaleItemId;
+
     @Data
     @Builder
     @NoArgsConstructor

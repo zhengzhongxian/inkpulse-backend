@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +34,9 @@ public class AddToCartCommandHandler implements Command.CommandHandler<AddToCart
     private final BookEditionRepository bookEditionRepository;
     private final UserRepository userRepository;
     private final TokenService tokenService;
+
+    @Value("${cart.max-items:30}")
+    private int maxItems;
 
     @Override
     @Transactional
@@ -52,6 +56,18 @@ public class AddToCartCommandHandler implements Command.CommandHandler<AddToCart
                     .user(user)
                     .build();
             cart = cartRepository.save(cart);
+        }
+
+        // Enforce total cart items/quantity limit check
+        List<CartItem> allItems = cartItemRepository.findByCartId(cart.getId());
+        int currentCartTotal = allItems.stream().mapToInt(CartItem::getQuantity).sum();
+        int projectedTotal = currentCartTotal + qtyToAdd;
+
+        if (projectedTotal > maxItems) {
+            throw new BusinessValidationException(
+                    String.format(CartMessageConstants.CART_TOTAL_QTY_LIMIT_EXCEEDED, maxItems),
+                    "CART_LIMIT_EXCEEDED"
+            );
         }
 
         // 3. Find existing CartItem or create new one
@@ -89,7 +105,7 @@ public class AddToCartCommandHandler implements Command.CommandHandler<AddToCart
         tokenService.removeUserCart(cmd.getUserId());
 
         // 5. Count total quantity in cart
-        List<CartItem> allItems = cartItemRepository.findByCartId(cart.getId());
+        allItems = cartItemRepository.findByCartId(cart.getId());
         int cartTotalItems = allItems.stream()
                 .mapToInt(CartItem::getQuantity)
                 .sum();

@@ -15,5 +15,9 @@ public record CartItemResponse(
     boolean stockSufficient,
     Integer editionNumber,
     String coverType,
-    String isbn
+    String isbn,
+    BigDecimal originalPrice,
+    String originalPriceDisplay,
+    Boolean isFlashSale,
+    String flashSaleItemId
 ) {}

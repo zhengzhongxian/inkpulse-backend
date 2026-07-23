@@ -102,7 +102,8 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
 
                         String ext = ".jpg";
                         String slugTitle = SlugHelper.toSlug(cmd.getTitle());
-                        String objectName = book.getId().toString() + "_" + slugTitle + ext;
+                        String uniqueSuffix = UUID.randomUUID().toString().substring(0, 8);
+                        String objectName = book.getId().toString() + "_" + slugTitle + "_" + uniqueSuffix + ext;
                         String relativePath = "books/" + objectName;
 
                         try {
@@ -113,6 +114,15 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                                                 resizedFile.getFileSize(),
                                                 objectName,
                                                 null);
+                                // Delete old cover image to prevent ghost cache and keep MinIO clean
+                                if (book.getThumbnailUrl() != null && !book.getThumbnailUrl().isBlank() && book.getThumbnailUrl().contains("/")) {
+                                        String oldObjectName = book.getThumbnailUrl().substring(book.getThumbnailUrl().lastIndexOf("/") + 1);
+                                        try {
+                                                minioService.deleteFile(oldObjectName);
+                                        } catch (Exception e) {
+                                                log.warn("Failed to delete old book cover file from MinIO: {}", oldObjectName, e);
+                                        }
+                                }
                                 book.setThumbnailUrl(relativePath);
                         } catch (Exception ex) {
                                 log.error("Failed to upload updated book cover to MinIO. Book ID: {}", book.getId(),

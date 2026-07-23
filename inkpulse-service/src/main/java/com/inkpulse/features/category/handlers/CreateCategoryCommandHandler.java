@@ -63,6 +63,7 @@ public class CreateCategoryCommandHandler implements Command.CommandHandler<Crea
                 .name(saved.getName())
                 .slug(saved.getSlug())
                 .parentId(saved.getParent() != null ? saved.getParent().getId() : null)
+                .createdAt(saved.getCreatedAt())
                 .build();
     }
 

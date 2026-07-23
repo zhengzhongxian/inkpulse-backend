@@ -1,4 +1,4 @@
-package com.inkpulse.models.request;
+package com.inkpulse.models.request.auth;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;

@@ -81,6 +81,10 @@ public class GetOrderDetailQueryHandler implements Query.QueryHandler<GetOrderDe
             }
 
             BigDecimal subtotal = detail.getOriginalPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+            BigDecimal oldPrice = edition.getOldPrice() != null ? edition.getOldPrice() : detail.getOriginalPrice();
+            String oldPriceDisplay = BookEditionResponse.formatVnd(oldPrice);
+            String voucherDiscountAmountDisplay = BookEditionResponse.formatVnd(detail.getVoucherDiscountAmount() != null ? detail.getVoucherDiscountAmount() : BigDecimal.ZERO);
+            Boolean isVoucherApplied = detail.getVoucherDiscountAmount() != null && detail.getVoucherDiscountAmount().compareTo(BigDecimal.ZERO) > 0;
 
             itemResponses.add(new OrderItemDetailResponse(
                     edition.getId().toString(),
@@ -92,7 +96,19 @@ public class GetOrderDetailQueryHandler implements Query.QueryHandler<GetOrderDe
                     BookEditionResponse.formatVnd(subtotal),
                     edition.getEditionNumber(),
                     edition.getCoverType() != null ? edition.getCoverType().name() : null,
-                    edition.getIsbn()
+                    edition.getIsbn(),
+                    detail.getFlashSale() != null,
+                    BookEditionResponse.formatVnd(detail.getFlashSaleDiscountAmount()),
+                    detail.getFlashSale() != null ? 
+                        detail.getFlashSale().getItems().stream()
+                            .filter(i -> i.getBookEdition().getId().equals(edition.getId()))
+                            .findFirst()
+                            .map(i -> i.getId().toString())
+                            .orElse(detail.getFlashSale().getId().toString())
+                        : null,
+                    oldPriceDisplay,
+                    voucherDiscountAmountDisplay,
+                    isVoucherApplied
             ));
         }
 
@@ -103,7 +119,8 @@ public class GetOrderDetailQueryHandler implements Query.QueryHandler<GetOrderDe
 
         String decryptedPhone = cryptographyService.decrypt(order.getRecipientPhone());
 
-        BigDecimal totalAmount = order.getOrderFee().add(order.getShippingFee());
+        BigDecimal totalAmount = order.getOrderFee().add(order.getShippingFee())
+                .subtract(order.getVoucherDiscountAmount() != null ? order.getVoucherDiscountAmount() : BigDecimal.ZERO);
 
         OrderDetailResponse detailResponse = new OrderDetailResponse(
                 order.getId().toString(),
@@ -121,7 +138,9 @@ public class GetOrderDetailQueryHandler implements Query.QueryHandler<GetOrderDe
                 BookEditionResponse.formatVnd(order.getShippingFee()),
                 BookEditionResponse.formatVnd(totalAmount),
                 itemResponses,
-                order.getCreatedAt().toString()
+                order.getCreatedAt().toString(),
+                order.getVoucher() != null ? order.getVoucher().getVoucherCode() : null,
+                order.getVoucherDiscountAmount() != null ? BookEditionResponse.formatVnd(order.getVoucherDiscountAmount()) : BookEditionResponse.formatVnd(BigDecimal.ZERO)
         );
 
         // 3. Save to Cache (Only cache if order is in a final status: DELIVERED or CANCELLED)

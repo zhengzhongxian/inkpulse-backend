@@ -13,6 +13,10 @@ public interface ICacheService {
 
     String getString(String key);
 
+    Long increment(String key);
+
+    void expire(String key, Duration expiry);
+
     // ─── Typed Object (JSON-serialized) ───────────────────────────────
 
     <T> void set(String key, T value, Duration expiry);
@@ -50,6 +54,8 @@ public interface ICacheService {
 
     void hashDelete(String key, String field);
 
+    Long hashIncrement(String key, String field, long delta);
+
     // ─── Set ─────────────────────────────────────────────────────────
 
     void sadd(String key, Duration ttl, String... members);
@@ -57,4 +63,6 @@ public interface ICacheService {
     java.util.Set<String> smembers(String key);
 
     void srem(String key, String... members);
+
+    boolean sismember(String key, String member);
 }

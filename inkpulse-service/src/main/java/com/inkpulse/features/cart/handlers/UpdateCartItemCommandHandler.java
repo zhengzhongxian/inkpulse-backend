@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 @Slf4j
 @Component
@@ -22,6 +23,9 @@ public class UpdateCartItemCommandHandler implements Command.CommandHandler<Upda
 
     private final CartItemRepository cartItemRepository;
     private final TokenService tokenService;
+
+    @Value("${cart.max-items:30}")
+    private int maxItems;
 
     @Override
     @Transactional
@@ -46,6 +50,18 @@ public class UpdateCartItemCommandHandler implements Command.CommandHandler<Upda
             throw new BusinessValidationException(
                     String.format("Không đủ hàng trong kho. Còn lại: %d cuốn", edition.getStockQuantity()),
                     "STOCK_INSUFFICIENT"
+            );
+        }
+
+        // Enforce total cart items/quantity limit check
+        java.util.List<CartItem> allItems = cartItemRepository.findByCartId(cartItem.getCart().getId());
+        int currentTotal = allItems.stream().mapToInt(CartItem::getQuantity).sum();
+        int projectedTotal = currentTotal - cartItem.getQuantity() + cmd.getNewQuantity();
+
+        if (projectedTotal > maxItems) {
+            throw new BusinessValidationException(
+                    String.format(CartMessageConstants.CART_TOTAL_QTY_LIMIT_EXCEEDED, maxItems),
+                    "CART_LIMIT_EXCEEDED"
             );
         }
 

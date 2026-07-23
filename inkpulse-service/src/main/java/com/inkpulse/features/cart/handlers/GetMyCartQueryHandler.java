@@ -8,6 +8,8 @@ import com.inkpulse.entities.Cart;
 import com.inkpulse.entities.CartItem;
 import com.inkpulse.entities.BookEdition;
 import com.inkpulse.entities.Book;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService;
+import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService.FlashSaleItemInfo;
 import com.inkpulse.repositories.CartRepository;
 import com.inkpulse.repositories.CartItemRepository;
 import com.inkpulse.models.pagination.PagedList;
@@ -20,9 +22,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
-import java.util.Optional;
-import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,6 +33,7 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
 
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
+    private final ActiveFlashSaleLookupService activeFlashSaleLookupService;
 
     @Override
     @Transactional(readOnly = true)
@@ -45,6 +47,12 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
         Pageable pageable = query.toPageable();
 
         Page<CartItem> cartItemsPage = cartItemRepository.findAllByCartId(cart.getId(), pageable);
+
+        List<UUID> editionIds = cartItemsPage.getContent().stream()
+                .map(item -> item.getEdition().getId())
+                .toList();
+
+        Map<UUID, FlashSaleItemInfo> flashSales = activeFlashSaleLookupService.getActiveFlashSalesByEditionIds(editionIds);
 
         return PagedList.fromPage(cartItemsPage, item -> {
             BookEdition edition = item.getEdition();
@@ -61,20 +69,36 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
             int stockQty = edition.getStockQuantity();
             boolean stockSufficient = item.getQuantity() <= stockQty;
 
+            BigDecimal price = edition.getPrice();
+            BigDecimal originalPrice = edition.getPrice();
+            boolean isFlashSale = false;
+            String flashSaleItemId = null;
+
+            FlashSaleItemInfo fs = flashSales.get(edition.getId());
+            if (fs != null) {
+                price = fs.getFlashSalePrice();
+                isFlashSale = true;
+                flashSaleItemId = fs.getFlashSaleItemId().toString();
+            }
+
             return new CartItemResponse(
                     item.getId().toString(),
                     edition.getId().toString(),
                     book.getTitle(),
                     authorNameJoined,
                     edition.getThumbnailUrl(),
-                    edition.getPrice(),
-                    BookEditionResponse.formatVnd(edition.getPrice()),
+                    price,
+                    BookEditionResponse.formatVnd(price),
                     item.getQuantity(),
                     stockQty,
                     stockSufficient,
                     edition.getEditionNumber(),
                     edition.getCoverType() != null ? edition.getCoverType().name() : null,
-                    edition.getIsbn()
+                    edition.getIsbn(),
+                    originalPrice,
+                    BookEditionResponse.formatVnd(originalPrice),
+                    isFlashSale,
+                    flashSaleItemId
             );
         });
     }
