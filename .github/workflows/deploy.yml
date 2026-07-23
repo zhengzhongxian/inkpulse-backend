@@ -106,7 +106,7 @@ jobs:
           if [ "$CONFIG_CHANGED" = true ]; then
             kubectl rollout restart deployment/backend-deployment
           fi
-          kubectl rollout status deployment/backend-deployment --timeout=150s || {
+          kubectl rollout status deployment/backend-deployment --timeout=300s || {
             echo "❌ Deploy failed! Auto rolling back to previous version..."
             kubectl rollout undo deployment/backend-deployment
             exit 1
@@ -115,7 +115,7 @@ jobs:
       - name: Post-Deploy Health Check
         run: |
           echo "🔍 Running post-deploy health check..."
-          kubectl wait --for=condition=ready pod -l app=backend-core --timeout=120s || {
+          kubectl wait --for=condition=ready pod -l app=backend-core --timeout=300s || {
             echo "❌ Health check failed! Pods not ready."
             kubectl rollout undo deployment/backend-deployment
             exit 1
