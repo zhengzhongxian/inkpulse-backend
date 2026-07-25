@@ -87,8 +87,10 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
     private final CacheProperties cacheProperties;
     private final VoucherTargetStrategyResolver strategyResolver;
     private final TokenService tokenService;
+    private final FlashSaleItemRepository flashSaleItemRepository;
 
     private final List<IEligibilityRule<CreateOrderContext>> orderRules;
+
 
     @Override
     @Transactional
@@ -461,7 +463,20 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
             } catch (Exception ex) {
                 log.error("Failed to evict detail cache for edition: {}", edition.getId(), ex);
             }
+
+            // Increment FlashSaleItem soldCount in DB & update Redis stock via KeyConstants
+            FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
+            if (flashSaleItem != null) {
+                flashSaleItemRepository.incrementSoldCount(flashSaleItem.getId(), item.getQuantity());
+                try {
+                    cacheService.hashIncrement(KeyConstants.SECTION_FLASHSALE_STOCK, flashSaleItem.getId().toString(), -item.getQuantity());
+                } catch (Exception ex) {
+                    log.warn("Failed to decrement Redis flash sale stock for item: {}", flashSaleItem.getId(), ex);
+                }
+            }
         }
+
+
 
         // 11. Clear Cart Items (if checked out from cart)
         if (command.getSource() != null && command.getSource().equalsIgnoreCase("CART")

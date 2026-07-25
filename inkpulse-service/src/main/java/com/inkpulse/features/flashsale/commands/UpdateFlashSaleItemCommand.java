@@ -19,4 +19,6 @@ public class UpdateFlashSaleItemCommand implements Command<FlashSaleItemResponse
     private UUID flashSaleItemId;
     private BigDecimal discountAmount;
     private Integer flashSaleStock;
+    private Integer soldCount;
 }
+

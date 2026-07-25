@@ -57,6 +57,10 @@ public class UpdateFlashSaleItemHandler implements Command.CommandHandler<Update
         if (command.getFlashSaleStock() != null) {
             item.setFlashSaleStock(command.getFlashSaleStock());
         }
+        if (command.getSoldCount() != null) {
+            item.setSoldCount(command.getSoldCount());
+        }
+
 
         FlashSaleItem savedItem = flashSaleItemRepository.save(item);
         log.info("Flash Sale Item updated successfully with ID: {}", savedItem.getId());

@@ -24,4 +24,10 @@ public interface FlashSaleItemRepository extends JpaRepository<FlashSaleItem, UU
     List<FlashSaleItem> findActiveByBookEditionIds(
         @Param("editionIds") Collection<UUID> editionIds,
         @Param("now") ZonedDateTime now);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE FlashSaleItem fsi SET fsi.soldCount = fsi.soldCount + :quantity WHERE fsi.id = :id")
+    int incrementSoldCount(@Param("id") UUID id, @Param("quantity") int quantity);
 }
+
+
