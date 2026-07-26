@@ -21,25 +21,33 @@ CREATE TABLE IF NOT EXISTS banners (
 CREATE TABLE IF NOT EXISTS banner_editions (
     banner_edition_id UUID PRIMARY KEY,
     banner_id UUID NOT NULL REFERENCES banners(banner_id) ON DELETE CASCADE,
-    edition_id UUID NOT NULL REFERENCES book_editions(edition_id) ON DELETE CASCADE,
-    display_order INT NOT NULL DEFAULT 0
+    edition_id UUID NOT NULL REFERENCES book_editions(id) ON DELETE CASCADE,
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_banners_is_active_order ON banners(is_active, display_order) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_banner_editions_banner_id ON banner_editions(banner_id);
 
 -- Seed permissions for Banners
-INSERT INTO permissions (permission_id, name, code, module, created_at, updated_at, is_deleted, version)
+INSERT INTO permissions (id, permission_code, permission_name, module, description, created_at)
 VALUES
-    (gen_random_uuid(), 'Xem danh sách banner nội bộ', 'banner:read', 'Banner', NOW(), NOW(), false, 0),
-    (gen_random_uuid(), 'Tạo banner quảng cáo mới', 'banner:write', 'Banner', NOW(), NOW(), false, 0),
-    (gen_random_uuid(), 'Xóa banner quảng cáo', 'banner:delete', 'Banner', NOW(), NOW(), false, 0)
-ON CONFLICT DO NOTHING;
+    (gen_random_uuid(), 'Permissions.Banners.View', 'Xem danh sách banner nội bộ', 'Banner', 'Allows viewing internal banner list and details', NOW()),
+    (gen_random_uuid(), 'Permissions.Banners.Create', 'Tạo banner quảng cáo mới', 'Banner', 'Allows creating new banner campaigns', NOW()),
+    (gen_random_uuid(), 'Permissions.Banners.Edit', 'Chỉnh sửa banner quảng cáo', 'Banner', 'Allows updating existing banners', NOW()),
+    (gen_random_uuid(), 'Permissions.Banners.Delete', 'Xóa banner quảng cáo', 'Banner', 'Allows deleting banner campaigns', NOW())
+ON CONFLICT (permission_code) DO NOTHING;
 
 -- Grant banner permissions to ADMIN role
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.role_id, p.permission_id
-FROM roles r
-CROSS JOIN permissions p
-WHERE r.code = 'ADMIN' AND p.module = 'Banner'
+INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+SELECT gen_random_uuid(), '018f4e00-0000-7000-8000-000000000001', id, NOW()
+FROM permissions
+WHERE permission_code IN (
+    'Permissions.Banners.View',
+    'Permissions.Banners.Create',
+    'Permissions.Banners.Edit',
+    'Permissions.Banners.Delete'
+)
 ON CONFLICT DO NOTHING;
