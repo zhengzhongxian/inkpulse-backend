@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS banners (
 CREATE TABLE IF NOT EXISTS banner_editions (
     banner_edition_id UUID PRIMARY KEY,
     banner_id UUID NOT NULL REFERENCES banners(banner_id) ON DELETE CASCADE,
-    edition_id UUID NOT NULL REFERENCES book_editions(edition_id) ON DELETE CASCADE,
+    edition_id UUID NOT NULL REFERENCES book_editions(id) ON DELETE CASCADE,
     display_order INT NOT NULL DEFAULT 0
 );
 
