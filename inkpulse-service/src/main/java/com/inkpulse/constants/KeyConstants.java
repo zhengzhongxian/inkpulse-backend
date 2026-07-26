@@ -41,6 +41,8 @@ public final class KeyConstants {
     public static final String SECTION_FLASHSALE_BUYERS = "redis:flashsale_buyers";
     public static final String SECTION_AI_VISION_RATE = "redis:ai_vision_rate";
     public static final String SECTION_AI_CHAT_RATE = "redis:ai_chat_rate";
+    public static final String SECTION_BANNERS = "redis:banners";
+    public static final String SECTION_BANNER_DETAIL = "redis:banner_detail";
 
     public static final String CATEGORY_LOCK_RETRY_TIMEOUT = "cache.lock.category.retry-timeout-seconds";
     public static final String CATEGORY_LOCK_RETRY_INTERVAL = "cache.lock.category.retry-interval-ms";

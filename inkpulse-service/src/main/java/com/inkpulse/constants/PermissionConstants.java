@@ -17,6 +17,16 @@ public final class PermissionConstants {
         public static final String INTERNAL_VIEW = "Permissions.Books.InternalView";
     }
 
+    public static final class Banners {
+        private Banners() {
+        }
+
+        public static final String VIEW = "Permissions.Banners.View";
+        public static final String CREATE = "Permissions.Banners.Create";
+        public static final String EDIT = "Permissions.Banners.Edit";
+        public static final String DELETE = "Permissions.Banners.Delete";
+    }
+
     public static final class Categories {
         private Categories() {
         }
