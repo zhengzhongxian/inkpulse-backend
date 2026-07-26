@@ -17,7 +17,7 @@ public interface BannerRepository extends JpaRepository<Banner, UUID> {
     @Query("SELECT b FROM Banner b WHERE b.isActive = true ORDER BY b.displayOrder ASC, b.createdAt DESC")
     List<Banner> findAllActiveBanners();
 
-    @Query("SELECT b FROM Banner b WHERE (:keyword IS NULL OR LOWER(b.title) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+    @Query("SELECT b FROM Banner b WHERE (CAST(:keyword AS string) IS NULL OR LOWER(b.title) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))) " +
            "AND (:isActive IS NULL OR b.isActive = :isActive) ORDER BY b.displayOrder ASC, b.createdAt DESC")
     Page<Banner> findPagedBanners(@Param("keyword") String keyword, @Param("isActive") Boolean isActive, Pageable pageable);
 }
