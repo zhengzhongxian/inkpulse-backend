@@ -22,7 +22,10 @@ CREATE TABLE IF NOT EXISTS banner_editions (
     banner_edition_id UUID PRIMARY KEY,
     banner_id UUID NOT NULL REFERENCES banners(banner_id) ON DELETE CASCADE,
     edition_id UUID NOT NULL REFERENCES book_editions(id) ON DELETE CASCADE,
-    display_order INT NOT NULL DEFAULT 0
+    display_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_banners_is_active_order ON banners(is_active, display_order) WHERE is_deleted = false;
