@@ -32,6 +32,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
+                        .requestMatchers("/api/v1/banners/public").permitAll()
                         .requestMatchers("/api/v1/flash-sales/active").permitAll()
                         .requestMatchers("/api/v1/customer/ai/chat").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
