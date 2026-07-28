@@ -26,6 +26,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.UUID;
 
@@ -63,13 +64,15 @@ public class BannerController {
     @PreAuthorize("hasAuthority('" + PermissionConstants.Banners.CREATE + "')")
     public ResponseEntity<ResultRes<BannerResponse>> createBanner(
             @RequestPart(value = "request", required = false) String requestJson,
-            @RequestBody(required = false) CreateBannerRequest bodyRequest,
             @RequestPart(value = "imageFile", required = false) MultipartFile imageFile,
-            @RequestPart(value = "iconFile", required = false) MultipartFile iconFile
+            @RequestPart(value = "iconFile", required = false) MultipartFile iconFile,
+            HttpServletRequest servletRequest
     ) throws Exception {
-        CreateBannerRequest request = bodyRequest;
-        if (request == null && requestJson != null) {
+        CreateBannerRequest request = null;
+        if (requestJson != null && !requestJson.isBlank()) {
             request = objectMapper.readValue(requestJson, CreateBannerRequest.class);
+        } else if (servletRequest.getContentType() != null && servletRequest.getContentType().contains(MediaType.APPLICATION_JSON_VALUE)) {
+            request = objectMapper.readValue(servletRequest.getInputStream(), CreateBannerRequest.class);
         }
 
         UploadFileModel imageModel = toUploadFileModel(imageFile);
@@ -91,13 +94,15 @@ public class BannerController {
     public ResponseEntity<ResultRes<BannerResponse>> updateBanner(
             @PathVariable("id") UUID id,
             @RequestPart(value = "request", required = false) String requestJson,
-            @RequestBody(required = false) UpdateBannerRequest bodyRequest,
             @RequestPart(value = "imageFile", required = false) MultipartFile imageFile,
-            @RequestPart(value = "iconFile", required = false) MultipartFile iconFile
+            @RequestPart(value = "iconFile", required = false) MultipartFile iconFile,
+            HttpServletRequest servletRequest
     ) throws Exception {
-        UpdateBannerRequest request = bodyRequest;
-        if (request == null && requestJson != null) {
+        UpdateBannerRequest request = null;
+        if (requestJson != null && !requestJson.isBlank()) {
             request = objectMapper.readValue(requestJson, UpdateBannerRequest.class);
+        } else if (servletRequest.getContentType() != null && servletRequest.getContentType().contains(MediaType.APPLICATION_JSON_VALUE)) {
+            request = objectMapper.readValue(servletRequest.getInputStream(), UpdateBannerRequest.class);
         }
 
         UploadFileModel imageModel = toUploadFileModel(imageFile);
