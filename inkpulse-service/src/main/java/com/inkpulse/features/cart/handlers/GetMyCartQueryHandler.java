@@ -10,6 +10,8 @@ import com.inkpulse.entities.BookEdition;
 import com.inkpulse.entities.Book;
 import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService;
 import com.inkpulse.features.flashsale.services.ActiveFlashSaleLookupService.FlashSaleItemInfo;
+import com.inkpulse.cache.ICacheService;
+import com.inkpulse.constants.KeyConstants;
 import com.inkpulse.repositories.CartRepository;
 import com.inkpulse.repositories.CartItemRepository;
 import com.inkpulse.models.pagination.PagedList;
@@ -34,6 +36,7 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ActiveFlashSaleLookupService activeFlashSaleLookupService;
+    private final ICacheService cacheService;
 
     @Override
     @Transactional(readOnly = true)
@@ -76,9 +79,13 @@ public class GetMyCartQueryHandler implements Query.QueryHandler<GetMyCartQuery,
 
             FlashSaleItemInfo fs = flashSales.get(edition.getId());
             if (fs != null) {
-                price = fs.getFlashSalePrice();
-                isFlashSale = true;
-                flashSaleItemId = fs.getFlashSaleItemId().toString();
+                String buyersKey = KeyConstants.SECTION_FLASHSALE_BUYERS + ":" + fs.getFlashSaleItemId();
+                boolean alreadyPurchased = cacheService.sismember(buyersKey, query.getUserId().toString());
+                if (!alreadyPurchased) {
+                    price = fs.getFlashSalePrice();
+                    isFlashSale = true;
+                    flashSaleItemId = fs.getFlashSaleItemId().toString();
+                }
             }
 
             return new CartItemResponse(

@@ -133,6 +133,7 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket-name: ${MINIO_BUCKET_NAME:books}
+  avatar-bucket-name: ${MINIO_AVATAR_BUCKET_NAME:avatar}
 
 storage:
   public-url: ${STORAGE_PUBLIC_URL:images.inkpulse.com}

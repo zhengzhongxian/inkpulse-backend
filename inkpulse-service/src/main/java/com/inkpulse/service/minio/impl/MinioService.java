@@ -1,6 +1,7 @@
 package com.inkpulse.service.minio.impl;
 
 import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.UrlHelper;
 import com.inkpulse.corehelpers.exceptions.MinioBusinessException;
 import com.inkpulse.corehelpers.exceptions.MinioTechnicalException;
 import com.inkpulse.service.minio.IMinioService;
@@ -429,9 +430,7 @@ public class MinioService implements IMinioService {
 
     private String buildFileUrl(String bucket, String objectName) {
         String baseUrl = !publicUrl.isBlank() ? publicUrl : endpoint;
-        String scheme = useSsl ? "https" : "http";
-
-        String cleanBaseUrl = baseUrl.replaceAll("^https?://", "").replaceAll("/+$", "");
-        return scheme + "://" + cleanBaseUrl + "/" + bucket + "/" + objectName;
+        String relativePath = bucket + "/" + objectName;
+        return UrlHelper.buildAbsoluteUrl(baseUrl, relativePath, useSsl);
     }
 }

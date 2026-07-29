@@ -59,7 +59,7 @@ public class UpdateBannerHandler implements Command.CommandHandler<UpdateBannerC
         if (command.getImageFile() != null) {
             try {
                 String objectName = "banners/" + bannerId + "/image_" + UUID.randomUUID() + "_" + command.getImageFile().getFileName();
-                MinioFileInfo fileInfo = minioService.uploadFile(
+                minioService.uploadFile(
                         command.getImageFile().getInputStream(),
                         command.getImageFile().getFileName(),
                         command.getImageFile().getContentType(),
@@ -67,7 +67,7 @@ public class UpdateBannerHandler implements Command.CommandHandler<UpdateBannerC
                         objectName,
                         Map.of("bannerId", bannerId.toString())
                 );
-                banner.setImageUrl(fileInfo.getUrl());
+                banner.setImageUrl("books/" + objectName);
             } catch (Exception e) {
                 log.error("Failed to update banner image in MinIO for ID {}", bannerId, e);
                 throw new BusinessValidationException("Lỗi khi tải ảnh banner mới lên MinIO.");
@@ -80,7 +80,7 @@ public class UpdateBannerHandler implements Command.CommandHandler<UpdateBannerC
         if (command.getIconFile() != null) {
             try {
                 String objectName = "banners/" + bannerId + "/icon_" + UUID.randomUUID() + "_" + command.getIconFile().getFileName();
-                MinioFileInfo fileInfo = minioService.uploadFile(
+                minioService.uploadFile(
                         command.getIconFile().getInputStream(),
                         command.getIconFile().getFileName(),
                         command.getIconFile().getContentType(),
@@ -88,7 +88,7 @@ public class UpdateBannerHandler implements Command.CommandHandler<UpdateBannerC
                         objectName,
                         Map.of("bannerId", bannerId.toString())
                 );
-                banner.setIconUrl(fileInfo.getUrl());
+                banner.setIconUrl("books/" + objectName);
             } catch (Exception e) {
                 log.error("Failed to update banner icon in MinIO for ID {}", bannerId, e);
             }

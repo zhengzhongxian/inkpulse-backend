@@ -11,6 +11,7 @@ import com.inkpulse.cqrs.Command;
 import com.inkpulse.entities.*;
 import com.inkpulse.features.book.commands.CreateBookEditionCommand;
 import com.inkpulse.models.response.book.BookEditionResponse;
+import com.inkpulse.models.response.book.PublicBookEditionDetailResponse;
 import com.inkpulse.constants.QueueConstants;
 import com.inkpulse.service.outbox.OutboxPublisher;
 import com.inkpulse.entities.enums.CoverType;
@@ -201,7 +202,7 @@ public class CreateBookEditionCommandHandler
                         pdfFile.getContentType(),
                         pdfFile.getFileSize(),
                         pdfPath,
-                        com.inkpulse.constants.AppConstants.MinioBucket.PDF,
+                        null,
                         null);
                 pdfObjectName = "pdf/" + pdfPath;
             } catch (Exception ex) {
@@ -398,8 +399,56 @@ public class CreateBookEditionCommandHandler
                 cacheService.remove(bookSetKey);
             }
             log.info("Evicted Redis cache key for sister editions of Book ID: {} using Redis Set", book.getId());
+
+            // Directly populate newly created BookEdition detail into Redis cache
+            if (detailSection != null) {
+                java.time.Duration cacheTtl = java.time.Duration.ofMinutes(detailSection.getTtl());
+                String cacheKey = detailSection.getKey() + editionId.toString();
+                
+                PublicBookEditionDetailResponse detailCacheObj = PublicBookEditionDetailResponse.builder()
+                        .id(editionId)
+                        .isbn(edition.getIsbn())
+                        .price(edition.getPrice())
+                        .oldPrice(edition.getOldPrice())
+                        .priceDisplay(BookEditionResponse.formatVnd(edition.getPrice()))
+                        .oldPriceDisplay(BookEditionResponse.formatVnd(edition.getOldPrice()))
+                        .stockQuantity(edition.getStockQuantity())
+                        .stockStatus(edition.getStockQuantity() >= 10 ? "Còn hàng" : (edition.getStockQuantity() > 0 ? "Chỉ còn " + edition.getStockQuantity() + " cuốn" : "Tạm hết hàng"))
+                        .editionNumber(edition.getEditionNumber())
+                        .soldCount(edition.getSoldCount())
+                        .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, coverRelativePath, useSsl))
+                        .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
+                        .pageCount(edition.getPageCount())
+                        .publicationYear(edition.getPublicationYear())
+                        .weightGram(edition.getWeightGram())
+                        .widthCm(edition.getWidthCm())
+                        .heightCm(edition.getHeightCm())
+                        .lengthCm(edition.getLengthCm())
+                        .language(edition.getLanguage())
+                        .publisherName(publisher != null ? publisher.getName() : null)
+                        .imageUrls(imageRelativePaths.stream().map(p -> UrlHelper.buildAbsoluteUrl(publicUrl, p, useSsl)).toList())
+                        .bookId(book.getId())
+                        .bookTitle(book.getTitle())
+                        .bookThumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, book.getThumbnailUrl(), useSsl))
+                        .introduce(book.getIntroduce())
+                        .description(book.getDescription())
+                        .authorName(authorNameJoined)
+                        .badgeText(badgeText)
+                        .badgeTextColor(badgeTextColor)
+                        .badgeBgColor(badgeBgColor)
+                        .categorySlugs(categorySlugs)
+                        .isFlashSale(false)
+                        .flashSaleItemId(null)
+                        .build();
+
+                cacheService.set(cacheKey, detailCacheObj, cacheTtl);
+
+                String bookSetKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITIONS, book.getId().toString());
+                cacheService.sadd(bookSetKey, cacheTtl, editionId.toString());
+                log.info("Cached newly created BookEdition detail in Redis. Key: {}", cacheKey);
+            }
         } catch (Exception e) {
-            log.error("Failed to evict Redis cache key for sister editions of Book ID: {}", book.getId(), e);
+            log.error("Failed to evict/populate Redis cache key for Book ID: {}", book.getId(), e);
         }
 
         String absoluteThumbnailUrl = UrlHelper.buildAbsoluteUrl(publicUrl, coverRelativePath, useSsl);

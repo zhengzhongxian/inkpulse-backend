@@ -16,12 +16,22 @@ import com.inkpulse.models.response.flashsale.FlashSaleItemResponse;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.UrlHelper;
+import org.springframework.beans.factory.annotation.Value;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class GetFlashSaleByIdQueryHandler implements Query.QueryHandler<GetFlashSaleByIdQuery, FlashSaleDetailResponse> {
 
     private final FlashSaleRepository flashSaleRepository;
+
+    @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + ":}")
+    private String publicUrl;
+
+    @Value("${" + KeyConstants.MINIO_USE_SSL + ":false}")
+    private boolean useSsl;
 
     @Override
     @Transactional(readOnly = true)
@@ -46,7 +56,7 @@ public class GetFlashSaleByIdQueryHandler implements Query.QueryHandler<GetFlash
                         .bookEditionId(item.getBookEdition().getId().toString())
                         .bookTitle(item.getBookEdition().getBook() != null ? item.getBookEdition().getBook().getTitle() : null)
                         .editionTitle(item.getBookEdition().getIsbn())
-                        .thumbnailUrl(item.getBookEdition().getThumbnailUrl())
+                        .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, item.getBookEdition().getThumbnailUrl(), useSsl))
                         .originalPrice(item.getBookEdition().getPrice())
                         .discountAmount(item.getDiscountAmount())
                         .flashSalePrice(item.getBookEdition().getPrice().subtract(item.getDiscountAmount()))

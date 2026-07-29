@@ -17,6 +17,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.UrlHelper;
+import org.springframework.beans.factory.annotation.Value;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -25,6 +29,12 @@ public class GetPublicBannersQueryHandler implements Query.QueryHandler<GetPubli
     private final BannerRepository bannerRepository;
     private final BannerEditionRepository bannerEditionRepository;
     private final ICacheService cacheService;
+
+    @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + ":}")
+    private String publicUrl;
+
+    @Value("${" + KeyConstants.MINIO_USE_SSL + ":false}")
+    private boolean useSsl;
 
     private static final String PUBLIC_BANNERS_CACHE_KEY = "redis:banners:public_active";
 
@@ -60,7 +70,7 @@ public class GetPublicBannersQueryHandler implements Query.QueryHandler<GetPubli
                     .isbn(be.getBookEdition().getIsbn())
                     .price(be.getBookEdition().getPrice() != null ? be.getBookEdition().getPrice().toString() : null)
                     .oldPrice(be.getBookEdition().getOldPrice() != null ? be.getBookEdition().getOldPrice().toString() : null)
-                    .coverUrl(be.getBookEdition().getThumbnailUrl())
+                    .coverUrl(UrlHelper.buildAbsoluteUrl(publicUrl, be.getBookEdition().getThumbnailUrl(), useSsl))
                     .displayOrder(be.getDisplayOrder())
                     .build())
                 .toList();
@@ -69,8 +79,8 @@ public class GetPublicBannersQueryHandler implements Query.QueryHandler<GetPubli
                 .bannerId(banner.getId())
                 .title(banner.getTitle())
                 .subtitle(banner.getSubtitle())
-                .imageUrl(banner.getImageUrl())
-                .iconUrl(banner.getIconUrl())
+                .imageUrl(UrlHelper.buildAbsoluteUrl(publicUrl, banner.getImageUrl(), useSsl))
+                .iconUrl(UrlHelper.buildAbsoluteUrl(publicUrl, banner.getIconUrl(), useSsl))
                 .linkUrl(banner.getLinkUrl())
                 .displayOrder(banner.getDisplayOrder())
                 .isActive(banner.getIsActive())

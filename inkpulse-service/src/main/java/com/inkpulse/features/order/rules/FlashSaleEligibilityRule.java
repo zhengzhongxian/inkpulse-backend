@@ -9,6 +9,7 @@ import com.inkpulse.pipeline.EligibilityContext;
 import com.inkpulse.pipeline.IEligibilityRule;
 import com.inkpulse.repositories.FlashSaleRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.ZonedDateTime;
@@ -19,6 +20,7 @@ import java.util.UUID;
 import com.inkpulse.entities.FlashSaleItem;
 import com.inkpulse.repositories.FlashSaleItemRepository;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class FlashSaleEligibilityRule implements IEligibilityRule<CreateOrderContext> {
@@ -45,31 +47,31 @@ public class FlashSaleEligibilityRule implements IEligibilityRule<CreateOrderCon
             UUID fsItemId = item.getFlashSaleItemId();
             FlashSaleItem flashSaleItem = flashSaleItemRepository.findById(fsItemId).orElse(null);
             if (flashSaleItem == null) {
-                revertDecrements(decrementedSales);
-                context.reject(FlashSaleMessageConstants.FLASHSALE_NOT_FOUND);
-                return;
+                log.info("FlashSaleItem {} not found. Falling back to regular price for edition {}.", fsItemId, item.getEditionId());
+                item.setFlashSaleItemId(null);
+                continue;
             }
 
             FlashSale flashSale = flashSaleItem.getFlashSale();
             if (flashSale == null || !flashSale.getIsActive()) {
-                revertDecrements(decrementedSales);
-                context.reject(FlashSaleMessageConstants.NOT_IN_PERIOD);
-                return;
+                log.info("FlashSale for item {} is inactive. Falling back to regular price for edition {}.", fsItemId, item.getEditionId());
+                item.setFlashSaleItemId(null);
+                continue;
             }
 
             ZonedDateTime now = ZonedDateTime.now();
             if (now.isBefore(flashSale.getStartDate()) || now.isAfter(flashSale.getEndDate())) {
-                revertDecrements(decrementedSales);
-                context.reject(FlashSaleMessageConstants.NOT_IN_PERIOD);
-                return;
+                log.info("FlashSale for item {} is outside campaign window. Falling back to regular price for edition {}.", fsItemId, item.getEditionId());
+                item.setFlashSaleItemId(null);
+                continue;
             }
 
             // Check if user already purchased
             String buyersKey = KeyConstants.SECTION_FLASHSALE_BUYERS + ":" + fsItemId;
             if (cacheService.sismember(buyersKey, userIdStr)) {
-                revertDecrements(decrementedSales);
-                context.reject(FlashSaleMessageConstants.ALREADY_PURCHASED);
-                return;
+                log.info("User {} already purchased flash sale item {}. Falling back to regular price for edition {}.", userIdStr, fsItemId, item.getEditionId());
+                item.setFlashSaleItemId(null);
+                continue;
             }
 
             // Atomically decrement stock
@@ -78,10 +80,9 @@ public class FlashSaleEligibilityRule implements IEligibilityRule<CreateOrderCon
             if (remaining == null || remaining < 0) {
                 // Revert this specific decrement
                 cacheService.hashIncrement(KeyConstants.SECTION_FLASHSALE_STOCK, fsItemId.toString(), qty);
-                // Revert all previous decrements
-                revertDecrements(decrementedSales);
-                context.reject(FlashSaleMessageConstants.OUT_OF_STOCK);
-                return;
+                log.info("FlashSale item {} stock depleted. Falling back to regular price for edition {}.", fsItemId, item.getEditionId());
+                item.setFlashSaleItemId(null);
+                continue;
             }
 
             // Track this successful decrement

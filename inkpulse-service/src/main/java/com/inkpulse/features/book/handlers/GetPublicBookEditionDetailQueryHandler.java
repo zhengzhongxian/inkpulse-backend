@@ -65,7 +65,7 @@ public class GetPublicBookEditionDetailQueryHandler
             PublicBookEditionDetailResponse cached = cacheService.get(cacheKey, PublicBookEditionDetailResponse.class);
             if (cached != null) {
                 log.debug("BookEdition detail cache hit for ID: {}", query.editionId());
-                applyFlashSaleOverrides(cached);
+                applyFlashSaleOverrides(cached, query.userId());
                 return cached;
             }
         } catch (Exception e) {
@@ -224,11 +224,11 @@ public class GetPublicBookEditionDetailQueryHandler
             log.error("Failed to save BookEdition detail to cache or register Sets for ID: {}", query.editionId(), e);
         }
 
-        applyFlashSaleOverrides(detail);
+        applyFlashSaleOverrides(detail, query.userId());
         return detail;
     }
 
-    private void applyFlashSaleOverrides(PublicBookEditionDetailResponse detail) {
+    private void applyFlashSaleOverrides(PublicBookEditionDetailResponse detail, UUID userId) {
         if (detail == null) {
             return;
         }
@@ -246,12 +246,22 @@ public class GetPublicBookEditionDetailQueryHandler
         // Override main edition
         FlashSaleItemInfo mainFs = flashSales.get(detail.getId());
         if (mainFs != null) {
-            detail.setPrice(mainFs.getFlashSalePrice());
-            detail.setPriceDisplay(BookEditionResponse.formatVnd(mainFs.getFlashSalePrice()));
-            detail.setOldPrice(mainFs.getOriginalPrice());
-            detail.setOldPriceDisplay(BookEditionResponse.formatVnd(mainFs.getOriginalPrice()));
-            detail.setIsFlashSale(true);
-            detail.setFlashSaleItemId(mainFs.getFlashSaleItemId().toString());
+            boolean alreadyBought = false;
+            if (userId != null) {
+                String buyersKey = KeyConstants.SECTION_FLASHSALE_BUYERS + ":" + mainFs.getFlashSaleItemId();
+                alreadyBought = cacheService.sismember(buyersKey, userId.toString());
+            }
+            if (!alreadyBought) {
+                detail.setPrice(mainFs.getFlashSalePrice());
+                detail.setPriceDisplay(BookEditionResponse.formatVnd(mainFs.getFlashSalePrice()));
+                detail.setOldPrice(mainFs.getOriginalPrice());
+                detail.setOldPriceDisplay(BookEditionResponse.formatVnd(mainFs.getOriginalPrice()));
+                detail.setIsFlashSale(true);
+                detail.setFlashSaleItemId(mainFs.getFlashSaleItemId().toString());
+            } else {
+                detail.setIsFlashSale(false);
+                detail.setFlashSaleItemId(null);
+            }
         } else {
             detail.setIsFlashSale(false);
             detail.setFlashSaleItemId(null);
@@ -262,12 +272,22 @@ public class GetPublicBookEditionDetailQueryHandler
             for (BookEditionResponse ver : detail.getOtherVersions()) {
                 FlashSaleItemInfo verFs = flashSales.get(ver.getId());
                 if (verFs != null) {
-                    ver.setPrice(verFs.getFlashSalePrice());
-                    ver.setPriceDisplay(BookEditionResponse.formatVnd(verFs.getFlashSalePrice()));
-                    ver.setOldPrice(verFs.getOriginalPrice());
-                    ver.setOldPriceDisplay(BookEditionResponse.formatVnd(verFs.getOriginalPrice()));
-                    ver.setIsFlashSale(true);
-                    ver.setFlashSaleItemId(verFs.getFlashSaleItemId().toString());
+                    boolean verAlreadyBought = false;
+                    if (userId != null) {
+                        String verBuyersKey = KeyConstants.SECTION_FLASHSALE_BUYERS + ":" + verFs.getFlashSaleItemId();
+                        verAlreadyBought = cacheService.sismember(verBuyersKey, userId.toString());
+                    }
+                    if (!verAlreadyBought) {
+                        ver.setPrice(verFs.getFlashSalePrice());
+                        ver.setPriceDisplay(BookEditionResponse.formatVnd(verFs.getFlashSalePrice()));
+                        ver.setOldPrice(verFs.getOriginalPrice());
+                        ver.setOldPriceDisplay(BookEditionResponse.formatVnd(verFs.getOriginalPrice()));
+                        ver.setIsFlashSale(true);
+                        ver.setFlashSaleItemId(verFs.getFlashSaleItemId().toString());
+                    } else {
+                        ver.setIsFlashSale(false);
+                        ver.setFlashSaleItemId(null);
+                    }
                 } else {
                     ver.setIsFlashSale(false);
                     ver.setFlashSaleItemId(null);

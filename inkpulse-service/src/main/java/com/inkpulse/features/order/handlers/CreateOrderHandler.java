@@ -333,7 +333,7 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
         for (OrderItemRequest item : command.getItems()) {
             com.inkpulse.entities.FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
             if (flashSaleItem != null) {
-                totalFlashSaleDiscount = totalFlashSaleDiscount.add(flashSaleItem.getDiscountAmount().multiply(BigDecimal.valueOf(item.getQuantity())));
+                totalFlashSaleDiscount = totalFlashSaleDiscount.add(flashSaleItem.getDiscountAmount());
             }
         }
         BigDecimal finalProductSubtotal = totalInsuranceValue.subtract(totalFlashSaleDiscount);
@@ -381,7 +381,7 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
                     .bookEdition(edition)
                     .quantity(item.getQuantity())
                     .originalPrice(edition.getPrice())
-                    .flashSaleDiscountAmount(flashDiscount.multiply(BigDecimal.valueOf(item.getQuantity())))
+                    .flashSaleDiscountAmount(flashDiscount)
                     .voucherDiscountAmount(itemDiscount)
                     .voucher(itemDiscount.compareTo(BigDecimal.ZERO) > 0 ? voucher : null)
                     .flashSale(flashSaleItem != null ? flashSaleItem.getFlashSale() : null)

@@ -21,6 +21,9 @@ import org.springframework.data.domain.Sort;
 import com.inkpulse.entities.FlashSaleItem;
 import com.inkpulse.models.response.flashsale.FlashSaleItemResponse;
 
+import org.springframework.beans.factory.annotation.Value;
+import com.inkpulse.corehelpers.UrlHelper;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -28,6 +31,12 @@ public class GetActiveFlashSalesQueryHandler implements Query.QueryHandler<GetAc
 
     private final FlashSaleRepository flashSaleRepository;
     private final ICacheService cacheService;
+
+    @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + ":}")
+    private String publicUrl;
+
+    @Value("${" + KeyConstants.MINIO_USE_SSL + ":false}")
+    private boolean useSsl;
 
     @Override
     @Transactional(readOnly = true)
@@ -53,6 +62,8 @@ public class GetActiveFlashSalesQueryHandler implements Query.QueryHandler<GetAc
                     log.error("Failed to fetch Redis stock for flash sale item ID: {}", item.getId(), e);
                 }
 
+                String coverUrl = UrlHelper.buildAbsoluteUrl(publicUrl, item.getBookEdition().getThumbnailUrl(), useSsl);
+
                 responses.add(FlashSaleItemResponse.builder()
                         .flashSaleItemId(item.getId().toString())
                         .flashSaleId(fs.getId().toString())
@@ -60,7 +71,7 @@ public class GetActiveFlashSalesQueryHandler implements Query.QueryHandler<GetAc
                         .bookEditionId(item.getBookEdition().getId().toString())
                         .bookTitle(item.getBookEdition().getBook() != null ? item.getBookEdition().getBook().getTitle() : null)
                         .editionTitle(item.getBookEdition().getIsbn())
-                        .thumbnailUrl(item.getBookEdition().getThumbnailUrl())
+                        .thumbnailUrl(coverUrl)
                         .originalPrice(item.getBookEdition().getOldPrice() != null ? item.getBookEdition().getOldPrice() : item.getBookEdition().getPrice())
                         .discountAmount(item.getDiscountAmount())
                         .flashSalePrice(item.getBookEdition().getPrice().subtract(item.getDiscountAmount()))

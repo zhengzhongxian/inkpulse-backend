@@ -9,7 +9,7 @@ public final class AIMessageConstants {
     public static final String MESSAGE_EMPTY = "Tin nhắn không được để trống.";
     public static final String QUOTA_EXCEEDED = "Bạn đã vượt quá giới hạn %d lượt hỏi AI trong ngày. Vui lòng quay lại vào ngày mai!";
     public static final String CHAT_SUCCESS = "Xử lý tin nhắn AI thành công";
-    public static final String CHAT_SERVICE_UNAVAILABLE = "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau!";
+    public static final String CHAT_SERVICE_UNAVAILABLE = "Hiện tại máy chủ AI chưa bật server. Vui lòng liên hệ tổng thống trump để tài trợ server.";
 
     public static final String CODE_GUEST_UNAUTHORIZED = "AI_GUEST_UNAUTHORIZED";
     public static final String CODE_MESSAGE_EMPTY = "AI_MESSAGE_EMPTY";

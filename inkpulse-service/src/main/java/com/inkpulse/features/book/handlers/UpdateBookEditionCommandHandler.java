@@ -225,7 +225,7 @@ public class UpdateBookEditionCommandHandler
                         pdfFile.getContentType(),
                         pdfFile.getFileSize(),
                         pdfObjectName,
-                        com.inkpulse.constants.AppConstants.MinioBucket.PDF,
+                        null,
                         null);
                 edition.setFilePathPdf("pdf/" + pdfObjectName);
             } catch (Exception ex) {

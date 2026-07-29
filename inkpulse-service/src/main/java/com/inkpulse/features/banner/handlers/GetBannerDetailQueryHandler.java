@@ -18,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+import com.inkpulse.constants.KeyConstants;
+import com.inkpulse.corehelpers.UrlHelper;
+import org.springframework.beans.factory.annotation.Value;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,6 +30,12 @@ public class GetBannerDetailQueryHandler implements Query.QueryHandler<GetBanner
     private final BannerRepository bannerRepository;
     private final BannerEditionRepository bannerEditionRepository;
     private final SectionCacheService sectionCache;
+
+    @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + ":}")
+    private String publicUrl;
+
+    @Value("${" + KeyConstants.MINIO_USE_SSL + ":false}")
+    private boolean useSsl;
 
     @Override
     @Transactional(readOnly = true)
@@ -60,7 +70,7 @@ public class GetBannerDetailQueryHandler implements Query.QueryHandler<GetBanner
                         .isbn(be.getBookEdition().getIsbn())
                         .price(be.getBookEdition().getPrice() != null ? be.getBookEdition().getPrice().toString() : null)
                         .oldPrice(be.getBookEdition().getOldPrice() != null ? be.getBookEdition().getOldPrice().toString() : null)
-                        .coverUrl(be.getBookEdition().getThumbnailUrl())
+                        .coverUrl(UrlHelper.buildAbsoluteUrl(publicUrl, be.getBookEdition().getThumbnailUrl(), useSsl))
                         .displayOrder(be.getDisplayOrder())
                         .build())
                 .toList();
@@ -69,8 +79,8 @@ public class GetBannerDetailQueryHandler implements Query.QueryHandler<GetBanner
                 .bannerId(banner.getId())
                 .title(banner.getTitle())
                 .subtitle(banner.getSubtitle())
-                .imageUrl(banner.getImageUrl())
-                .iconUrl(banner.getIconUrl())
+                .imageUrl(UrlHelper.buildAbsoluteUrl(publicUrl, banner.getImageUrl(), useSsl))
+                .iconUrl(UrlHelper.buildAbsoluteUrl(publicUrl, banner.getIconUrl(), useSsl))
                 .linkUrl(banner.getLinkUrl())
                 .displayOrder(banner.getDisplayOrder())
                 .isActive(banner.getIsActive())
@@ -127,7 +137,7 @@ public class GetBannerDetailQueryHandler implements Query.QueryHandler<GetBanner
                         .isbn(e.isbn())
                         .price(e.price())
                         .oldPrice(e.oldPrice())
-                        .coverUrl(e.coverUrl())
+                        .coverUrl(UrlHelper.buildAbsoluteUrl(publicUrl, e.coverUrl(), useSsl))
                         .displayOrder(e.displayOrder())
                         .build())
                 .toList()
@@ -137,8 +147,8 @@ public class GetBannerDetailQueryHandler implements Query.QueryHandler<GetBanner
                 .bannerId(java.util.UUID.fromString(cached.bannerId()))
                 .title(cached.title())
                 .subtitle(cached.subtitle())
-                .imageUrl(cached.imageUrl())
-                .iconUrl(cached.iconUrl())
+                .imageUrl(UrlHelper.buildAbsoluteUrl(publicUrl, cached.imageUrl(), useSsl))
+                .iconUrl(UrlHelper.buildAbsoluteUrl(publicUrl, cached.iconUrl(), useSsl))
                 .linkUrl(cached.linkUrl())
                 .displayOrder(cached.displayOrder())
                 .isActive(cached.isActive())

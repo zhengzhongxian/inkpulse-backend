@@ -13,8 +13,10 @@ import com.inkpulse.features.user.dto.UserProfileCacheDto;
 import com.inkpulse.features.user.queries.GetUserProfileByUserIdQuery;
 import com.inkpulse.repositories.*;
 import com.inkpulse.service.minio.IMinioService;
+import com.inkpulse.constants.KeyConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import an.awesome.pipelinr.Pipeline;
@@ -37,6 +39,9 @@ public class UpdateUserProfileCommandHandler implements Command.CommandHandler<U
     private final SectionCacheService sectionCache;
     private final TokenService tokenService;
     private final Pipeline pipeline;
+
+    @Value("${" + KeyConstants.MINIO_AVATAR_BUCKET_NAME + ":avatar}")
+    private String avatarBucketName;
 
     @Override
     @Transactional
@@ -77,14 +82,14 @@ public class UpdateUserProfileCommandHandler implements Command.CommandHandler<U
                 }
                 String objectName = "users/avatars/" + user.getId().toString() + avatarExt;
                 
-                // Upload to MinIO using custom avatar bucket constant
+                // Upload to MinIO using custom avatar bucket
                 minioService.uploadFile(
                         cmd.getAvatarFile().getInputStream(),
                         cmd.getAvatarFile().getFileName(),
                         cmd.getAvatarFile().getContentType(),
                         cmd.getAvatarFile().getFileSize(),
                         objectName,
-                        AppConstants.MinioBucket.AVATAR,
+                        avatarBucketName,
                         null
                 );
                 

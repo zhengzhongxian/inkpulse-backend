@@ -66,6 +66,7 @@ public final class KeyConstants {
     public static final String MINIO_ACCESS_KEY = "minio.access-key";
     public static final String MINIO_SECRET_KEY = "minio.secret-key";
     public static final String MINIO_BUCKET_NAME = "minio.bucket-name";
+    public static final String MINIO_AVATAR_BUCKET_NAME = "minio.avatar-bucket-name";
     public static final String MINIO_USE_SSL = "minio.use-ssl";
     public static final String MINIO_REGION = "minio.region";
     public static final String MINIO_PRESIGNED_EXPIRY_MINUTES = "minio.presigned-expiry-minutes";
