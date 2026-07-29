@@ -26,7 +26,8 @@ public class AIChatController {
     private final IAIChatGrpcService aiChatGrpcService;
     private final ICacheService cacheService;
 
-    public record AIChatRequestPayload(String message) {}
+    public record AIChatRequestPayload(String message) {
+    }
 
     @PostMapping(value = "/api/v1/customer/ai/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamAIChat(
