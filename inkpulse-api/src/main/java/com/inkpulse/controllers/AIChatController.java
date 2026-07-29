@@ -84,10 +84,12 @@ public class AIChatController {
             public void onError(Throwable t) {
                 log.error("gRPC Chat stream failed for user {}", userId, t);
                 try {
-                    emitter.send(SseEmitter.event().name("error").data(AIMessageConstants.CHAT_SERVICE_UNAVAILABLE));
+                    emitter.send(SseEmitter.event().data(AIMessageConstants.CHAT_SERVICE_UNAVAILABLE));
+                    emitter.send(SseEmitter.event().name("end").data("[DONE]"));
+                    emitter.complete();
                 } catch (IOException ignored) {
+                    emitter.completeWithError(t);
                 }
-                emitter.completeWithError(t);
             }
 
             @Override
