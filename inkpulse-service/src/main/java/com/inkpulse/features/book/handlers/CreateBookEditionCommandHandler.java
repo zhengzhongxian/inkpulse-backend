@@ -111,9 +111,10 @@ public class CreateBookEditionCommandHandler
                 .publisher(publisher)
                 .build();
 
-        edition = bookEditionRepository.save(edition);
-        UUID editionId = edition.getId();
-        String slugTitle = SlugHelper.toSlug(book.getTitle() + " " + cmd.getEditionNumber());
+        final BookEdition initialSavedEdition = bookEditionRepository.save(edition);
+        final UUID editionId = initialSavedEdition.getId();
+        final String slugTitle = SlugHelper.toSlug(book.getTitle() + " " + cmd.getEditionNumber());
+        final Publisher finalPublisher = publisher;
 
         // 2. Upload cover thumbnail to MinIO if provided
         String coverRelativePath = null;
@@ -227,9 +228,9 @@ public class CreateBookEditionCommandHandler
             final String finalPdfObjectName = pdfObjectName;
 
             return transactionTemplate.execute(status -> {
-                edition.setThumbnailUrl(finalCoverRelativePath);
-                edition.setFilePathPdf(finalPdfObjectName);
-                BookEdition savedEdition = bookEditionRepository.save(edition);
+                initialSavedEdition.setThumbnailUrl(finalCoverRelativePath);
+                initialSavedEdition.setFilePathPdf(finalPdfObjectName);
+                BookEdition savedEdition = bookEditionRepository.save(initialSavedEdition);
 
                 Set<EditionBadge> edBadges = new HashSet<>();
                 if (cmd.getBadgeIds() != null && !cmd.getBadgeIds().isEmpty()) {
@@ -359,7 +360,7 @@ public class CreateBookEditionCommandHandler
                         .lengthCm(savedEdition.getLengthCm())
                         .weightGram(savedEdition.getWeightGram())
                         .language(savedEdition.getLanguage())
-                        .publisherName(publisher != null ? publisher.getName() : null)
+                        .publisherName(finalPublisher != null ? finalPublisher.getName() : null)
                         .authorName(authorNameJoined)
                         .badgeText(badgeText)
                         .badgeTextColor(badgeTextColor)
@@ -369,7 +370,7 @@ public class CreateBookEditionCommandHandler
                         .categorySlugs(categorySlugs)
                         .imageUrls(imageRelativePaths)
                         .badges(editionBadges)
-                        .publisherId(publisher != null ? publisher.getId() : null)
+                        .publisherId(finalPublisher != null ? finalPublisher.getId() : null)
                         .authorIds(authorIds)
                         .badgeIds(badgeIds)
                         .soldCount(savedEdition.getSoldCount())
@@ -428,7 +429,7 @@ public class CreateBookEditionCommandHandler
                                 .heightCm(savedEdition.getHeightCm())
                                 .lengthCm(savedEdition.getLengthCm())
                                 .language(savedEdition.getLanguage())
-                                .publisherName(publisher != null ? publisher.getName() : null)
+                                .publisherName(finalPublisher != null ? finalPublisher.getName() : null)
                                 .imageUrls(imageRelativePaths.stream().map(p -> UrlHelper.buildAbsoluteUrl(publicUrl, p, useSsl)).toList())
                                 .bookId(book.getId())
                                 .bookTitle(book.getTitle())
@@ -486,7 +487,7 @@ public class CreateBookEditionCommandHandler
                         .lengthCm(savedEdition.getLengthCm())
                         .weightGram(savedEdition.getWeightGram())
                         .language(savedEdition.getLanguage())
-                        .publisherName(publisher != null ? publisher.getName() : null)
+                        .publisherName(finalPublisher != null ? finalPublisher.getName() : null)
                         .build();
             });
         } catch (Exception ex) {
