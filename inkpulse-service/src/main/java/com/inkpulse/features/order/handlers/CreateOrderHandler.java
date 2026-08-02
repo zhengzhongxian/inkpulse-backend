@@ -46,7 +46,7 @@ import com.inkpulse.features.auth.service.TokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import vn.payos.model.v2.paymentRequests.CreatePaymentLinkRequest;
 import vn.payos.model.v2.paymentRequests.CreatePaymentLinkResponse;
 
@@ -90,10 +90,9 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
     private final FlashSaleItemRepository flashSaleItemRepository;
 
     private final List<IEligibilityRule<CreateOrderContext>> orderRules;
-
+    private final TransactionTemplate transactionTemplate;
 
     @Override
-    @Transactional
     public CreateOrderResponse handle(CreateOrderCommand command) {
         log.info("Handling CreateOrderCommand for user: {}", command.getUserId());
 
@@ -338,164 +337,171 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
         }
         BigDecimal finalProductSubtotal = totalInsuranceValue.subtract(totalFlashSaleDiscount);
 
-        // 6. Build and Save Order (Hibernate automatically encrypts plain recipientPhone on persist)
-        Order order = Order.builder()
-                .user(user)
-                .province(province)
-                .district(district)
-                .ward(ward)
-                .recipientPhone(recipientPhone) // Plain text, auto-encrypted by Converter
-                .receiverName(receiverName)
-                .orderCode(orderCode)
-                .streetAddress(streetAddress)
-                .orderStatus(initialStatus)
-                .addressLabel(addressLabel)
-                .shippingFee(shippingFee)
-                .orderFee(finalProductSubtotal)
-                .paymentMethod(paymentMethod)
-                .paymentStatus(PaymentStatus.PENDING)
-                .voucher(voucher)
-                .voucherDiscountAmount(totalVoucherDiscount)
-                .build();
+        final String finalOrderCode = orderCode;
+        final OrderStatus finalInitialStatus = initialStatus;
+        final PaymentMethod finalPaymentMethod = paymentMethod;
+        final String finalReceiverName = receiverName;
+        final String finalRecipientPhone = recipientPhone;
+        final String finalAddressLabel = addressLabel;
+        final BigDecimal finalShippingFee = shippingFee;
+        final BigDecimal finalProductSubtotalVal = finalProductSubtotal;
+        final BigDecimal finalTotalVoucherDiscount = totalVoucherDiscount;
+        final Voucher finalVoucher = voucher;
+        final User finalUser = user;
+        final GhnProvince finalProvince = province;
+        final GhnDistrict finalDistrict = district;
+        final GhnWard finalWard = ward;
+        final String finalStreetAddress = streetAddress;
+        final Map<UUID, BigDecimal> finalItemVoucherDiscounts = itemVoucherDiscounts;
 
-        order = orderRepository.saveAndFlush(order);
+        // 6-11. Perform DB transaction (saving order, stock deductions, outbox events, clearing cart)
+        PaymentTransaction createdTransaction = transactionTemplate.execute(status -> {
+            Order order = Order.builder()
+                    .user(finalUser)
+                    .province(finalProvince)
+                    .district(finalDistrict)
+                    .ward(finalWard)
+                    .recipientPhone(finalRecipientPhone)
+                    .receiverName(finalReceiverName)
+                    .orderCode(finalOrderCode)
+                    .streetAddress(finalStreetAddress)
+                    .orderStatus(finalInitialStatus)
+                    .addressLabel(finalAddressLabel)
+                    .shippingFee(finalShippingFee)
+                    .orderFee(finalProductSubtotalVal)
+                    .paymentMethod(finalPaymentMethod)
+                    .paymentStatus(PaymentStatus.PENDING)
+                    .voucher(finalVoucher)
+                    .voucherDiscountAmount(finalTotalVoucherDiscount)
+                    .build();
 
-        // Save Order Event (Order Event Store)
-        OrderEvent orderEvent = OrderEvent.builder()
-                .order(order)
-                .eventType(OrderEventType.ORDER_CREATED)
-                .eventData(JsonHelper.serializeSafe(command))
-                .createdBy(user.getId())
-                .build();
-        orderEventRepository.save(orderEvent);
+            order = orderRepository.saveAndFlush(order);
 
-        // 7. Save Order Details
-        for (OrderItemRequest item : command.getItems()) {
-            BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
-            BigDecimal itemDiscount = itemVoucherDiscounts.getOrDefault(item.getEditionId(), BigDecimal.ZERO);
-            BigDecimal flashDiscount = pipelineCtx.getItemFlashSaleDiscounts().getOrDefault(item.getEditionId(), BigDecimal.ZERO);
-            com.inkpulse.entities.FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
-
-            OrderDetail detail = OrderDetail.builder()
+            OrderEvent orderEvent = OrderEvent.builder()
                     .order(order)
-                    .bookEdition(edition)
-                    .quantity(item.getQuantity())
-                    .originalPrice(edition.getPrice())
-                    .flashSaleDiscountAmount(flashDiscount)
-                    .voucherDiscountAmount(itemDiscount)
-                    .voucher(itemDiscount.compareTo(BigDecimal.ZERO) > 0 ? voucher : null)
-                    .flashSale(flashSaleItem != null ? flashSaleItem.getFlashSale() : null)
+                    .eventType(OrderEventType.ORDER_CREATED)
+                    .eventData(JsonHelper.serializeSafe(command))
+                    .createdBy(finalUser.getId())
                     .build();
-            orderDetailRepository.save(detail);
-        }
+            orderEventRepository.save(orderEvent);
 
-        // Update UserVoucher link status to USED
-        if (voucher != null && pipelineCtx.getUserVoucherLink() != null) {
-            UserVoucher uv = pipelineCtx.getUserVoucherLink();
-            uv.setStatus(UserVoucherStatus.USED);
-            uv.setOrder(order);
-            uv.setUsedAt(ZonedDateTime.now());
-            userVoucherRepository.save(uv);
-        }
+            for (OrderItemRequest item : command.getItems()) {
+                BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
+                BigDecimal itemDiscount = finalItemVoucherDiscounts.getOrDefault(item.getEditionId(), BigDecimal.ZERO);
+                BigDecimal flashDiscount = pipelineCtx.getItemFlashSaleDiscounts().getOrDefault(item.getEditionId(), BigDecimal.ZERO);
+                com.inkpulse.entities.FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
 
-        // 8. Create Payment Transaction
-        PaymentTransaction transaction = PaymentTransaction.builder()
-                .order(order)
-                .transactionCode(orderCode)
-                .amount(finalProductSubtotal.add(shippingFee).subtract(totalVoucherDiscount))
-                .paymentMethod(paymentMethod)
-                .status(PaymentStatus.PENDING)
-                .build();
-        transaction = paymentTransactionRepository.save(transaction);
-
-        // 9. Create Order Log
-        OrderLog orderLog = OrderLog.builder()
-                .order(order)
-                .fromStatus(initialStatus)
-                .toStatus(initialStatus)
-                .changedBy(user.getId())
-                .adminNote("Khởi tạo đơn hàng")
-                .userNote("Khởi tạo đơn hàng")
-                .build();
-        orderLogRepository.save(orderLog);
-
-        // 10. Deduct Stock Quantity (Atomic SQL + Stock Event + ES/Redis Sync)
-        for (OrderItemRequest item : command.getItems()) {
-            BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
-            int affected = bookEditionRepository.decrementStock(edition.getId(), item.getQuantity());
-            if (affected == 0) {
-                throw new BusinessValidationException(
-                        String.format(StockMessageConstants.STOCK_INSUFFICIENT, 
-                                edition.getBook() != null ? edition.getBook().getTitle() : edition.getIsbn(), 
-                                edition.getStockQuantity()), 
-                        StockMessageConstants.CODE_STOCK_INSUFFICIENT
-                );
+                OrderDetail detail = OrderDetail.builder()
+                        .order(order)
+                        .bookEdition(edition)
+                        .quantity(item.getQuantity())
+                        .originalPrice(edition.getPrice())
+                        .flashSaleDiscountAmount(flashDiscount)
+                        .voucherDiscountAmount(itemDiscount)
+                        .voucher(itemDiscount.compareTo(BigDecimal.ZERO) > 0 ? finalVoucher : null)
+                        .flashSale(flashSaleItem != null ? flashSaleItem.getFlashSale() : null)
+                        .build();
+                orderDetailRepository.save(detail);
             }
 
-            // Update local object to sync with ELS correctly
-            edition.setStockQuantity(edition.getStockQuantity() - item.getQuantity());
+            if (finalVoucher != null && pipelineCtx.getUserVoucherLink() != null) {
+                UserVoucher uv = pipelineCtx.getUserVoucherLink();
+                uv.setStatus(UserVoucherStatus.USED);
+                uv.setOrder(order);
+                uv.setUsedAt(ZonedDateTime.now());
+                userVoucherRepository.save(uv);
+            }
 
-            // Save Stock Transaction
-            StockTransaction tx = StockTransaction.builder()
-                    .edition(edition)
-                    .delta(-item.getQuantity())
-                    .type(StockTransactionType.EXPORT_ORDER)
-                    .referenceCode(orderCode)
-                    .note(OrderMessageConstants.CREATE_ORDER_SUCCESS)
-                    .createdBy(user.getId())
+            PaymentTransaction txObj = PaymentTransaction.builder()
+                    .order(order)
+                    .transactionCode(finalOrderCode)
+                    .amount(finalProductSubtotalVal.add(finalShippingFee).subtract(finalTotalVoucherDiscount))
+                    .paymentMethod(finalPaymentMethod)
+                    .status(PaymentStatus.PENDING)
                     .build();
-            stockTransactionRepository.save(tx);
+            txObj = paymentTransactionRepository.save(txObj);
 
-            // Sync with Elasticsearch
-            SyncBookEditionMessage syncMsg = bookEditionSyncHelper.buildSyncMessage(edition);
-            if (syncMsg != null) {
-                outboxPublisher.publish(
-                        QueueConstants.SYNC_BOOK_EDITION_PARTIAL,
-                        syncMsg,
-                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage"
-                );
-            }
+            OrderLog orderLog = OrderLog.builder()
+                    .order(order)
+                    .fromStatus(finalInitialStatus)
+                    .toStatus(finalInitialStatus)
+                    .changedBy(finalUser.getId())
+                    .adminNote("Khởi tạo đơn hàng")
+                    .userNote("Khởi tạo đơn hàng")
+                    .build();
+            orderLogRepository.save(orderLog);
 
-            // Evict Cache
-            try {
-                String cacheKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL, edition.getId().toString());
-                cacheService.remove(cacheKey);
-            } catch (Exception ex) {
-                log.error("Failed to evict detail cache for edition: {}", edition.getId(), ex);
-            }
+            for (OrderItemRequest item : command.getItems()) {
+                BookEdition edition = pipelineCtx.getEditions().get(item.getEditionId());
+                int affected = bookEditionRepository.decrementStock(edition.getId(), item.getQuantity());
+                if (affected == 0) {
+                    throw new BusinessValidationException(
+                            String.format(StockMessageConstants.STOCK_INSUFFICIENT, 
+                                    edition.getBook() != null ? edition.getBook().getTitle() : edition.getIsbn(), 
+                                    edition.getStockQuantity()), 
+                            StockMessageConstants.CODE_STOCK_INSUFFICIENT
+                    );
+                }
 
-            // Increment FlashSaleItem soldCount in DB & update Redis stock via KeyConstants
-            FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
-            if (flashSaleItem != null) {
-                flashSaleItemRepository.incrementSoldCount(flashSaleItem.getId(), item.getQuantity());
+                edition.setStockQuantity(edition.getStockQuantity() - item.getQuantity());
+
+                StockTransaction tx = StockTransaction.builder()
+                        .edition(edition)
+                        .delta(-item.getQuantity())
+                        .type(StockTransactionType.EXPORT_ORDER)
+                        .referenceCode(finalOrderCode)
+                        .note(OrderMessageConstants.CREATE_ORDER_SUCCESS)
+                        .createdBy(finalUser.getId())
+                        .build();
+                stockTransactionRepository.save(tx);
+
+                SyncBookEditionMessage syncMsg = bookEditionSyncHelper.buildSyncMessage(edition);
+                if (syncMsg != null) {
+                    outboxPublisher.publish(
+                            QueueConstants.SYNC_BOOK_EDITION_PARTIAL,
+                            syncMsg,
+                            "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage"
+                    );
+                }
+
                 try {
-                    cacheService.hashIncrement(KeyConstants.SECTION_FLASHSALE_STOCK, flashSaleItem.getId().toString(), -item.getQuantity());
+                    String cacheKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL, edition.getId().toString());
+                    cacheService.remove(cacheKey);
                 } catch (Exception ex) {
-                    log.warn("Failed to decrement Redis flash sale stock for item: {}", flashSaleItem.getId(), ex);
+                    log.error("Failed to evict detail cache for edition: {}", edition.getId(), ex);
+                }
+
+                FlashSaleItem flashSaleItem = pipelineCtx.getActiveFlashSaleItems().get(item.getEditionId());
+                if (flashSaleItem != null) {
+                    flashSaleItemRepository.incrementSoldCount(flashSaleItem.getId(), item.getQuantity());
+                    try {
+                        cacheService.hashIncrement(KeyConstants.SECTION_FLASHSALE_STOCK, flashSaleItem.getId().toString(), -item.getQuantity());
+                    } catch (Exception ex) {
+                        log.warn("Failed to decrement Redis flash sale stock for item: {}", flashSaleItem.getId(), ex);
+                    }
                 }
             }
-        }
 
+            if (command.getSource() != null && command.getSource().equalsIgnoreCase("CART")
+                    && command.getCartItemIds() != null && !command.getCartItemIds().isEmpty()) {
+                cartItemRepository.deleteAllByIdInAndCart_User_Id(command.getCartItemIds(), finalUser.getId());
+                tokenService.cacheUserCart(finalUser.getId());
+            }
 
+            return txObj;
+        });
 
-        // 11. Clear Cart Items (if checked out from cart)
-        if (command.getSource() != null && command.getSource().equalsIgnoreCase("CART")
-                && command.getCartItemIds() != null && !command.getCartItemIds().isEmpty()) {
-            cartItemRepository.deleteAllByIdInAndCart_User_Id(command.getCartItemIds(), user.getId());
-            tokenService.cacheUserCart(user.getId());
-        }
-
+        Order createdOrder = createdTransaction.getOrder();
         String checkoutUrl = null;
         String qrCode = null;
         Long expiredAt = null;
 
         if (paymentMethod == PaymentMethod.PAYOS) {
-            // 12. Create PayOS Payment Link
+            // 12. Create PayOS Payment Link outside DB transaction
             long expiryTimestamp = (System.currentTimeMillis() / 1000) + (payOsSettings.getExpiryMinutes() * 60L);
             expiredAt = expiryTimestamp;
             long payOsOrderCode = Long.parseLong(orderCode);
 
-            // Alphanumeric, no accents, max 25 chars for PayOS description
             String description = "GD" + orderCode;
             if (description.length() > 25) {
                 description = description.substring(0, 25);
@@ -508,7 +514,7 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
                     .returnUrl(payOsSettings.getReturnUrl() + "?status=success&orderCode=" + orderCode)
                     .cancelUrl(payOsSettings.getCancelUrl() + "?status=cancel&orderCode=" + orderCode)
                     .buyerName(receiverName)
-                    .buyerEmail(user.getEmail() != null ? cryptographyService.decrypt(user.getEmail()) : "") // Decrypt user email for PayOS if encrypted in DB
+                    .buyerEmail(user.getEmail() != null ? cryptographyService.decrypt(user.getEmail()) : "")
                     .buyerPhone(recipientPhone)
                     .expiredAt(expiryTimestamp)
                     .build();
@@ -517,8 +523,15 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
                 CreatePaymentLinkResponse payOsRes = payOsService.createPaymentLink(payOsReq);
                 checkoutUrl = payOsRes.getCheckoutUrl();
                 qrCode = payOsRes.getQrCode();
-                transaction.setTransactionCode(payOsRes.getPaymentLinkId());
-                paymentTransactionRepository.save(transaction);
+
+                final String paymentLinkId = payOsRes.getPaymentLinkId();
+                transactionTemplate.executeWithoutResult(status -> {
+                    PaymentTransaction txToUpdate = paymentTransactionRepository.findById(createdTransaction.getId()).orElse(null);
+                    if (txToUpdate != null) {
+                        txToUpdate.setTransactionCode(paymentLinkId);
+                        paymentTransactionRepository.save(txToUpdate);
+                    }
+                });
             } catch (Exception e) {
                 log.error("Failed to create PayOS payment link for order: {}", orderCode, e);
                 throw new BusinessValidationException(OrderMessageConstants.PAYOS_CREATE_LINK_FAILED, "PAYOS_ERROR");
@@ -526,7 +539,7 @@ public class CreateOrderHandler implements Command.CommandHandler<CreateOrderCom
         }
 
         return CreateOrderResponse.builder()
-                .orderId(order.getId())
+                .orderId(createdOrder.getId())
                 .orderCode(orderCode)
                 .orderStatus(initialStatus.name())
                 .paymentStatus(PaymentStatus.PENDING.name())

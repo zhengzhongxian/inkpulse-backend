@@ -13,7 +13,6 @@ import com.inkpulse.models.request.ghn.GhnShippingItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -29,7 +28,6 @@ public class CalculateShippingFeeHandler implements Command.CommandHandler<Calcu
     private final IGhnShippingService ghnShippingService;
 
     @Override
-    @Transactional(readOnly = true)
     public CalculateShippingFeeResponse handle(CalculateShippingFeeCommand command) {
         log.info("Handling CalculateShippingFeeCommand for user: {}", command.getUserId());
 

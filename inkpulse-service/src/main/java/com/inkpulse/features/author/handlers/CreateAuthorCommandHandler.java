@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.UUID;
 
@@ -31,6 +31,7 @@ public class CreateAuthorCommandHandler implements Command.CommandHandler<Create
     private final AuthorRepository authorRepository;
     private final OutboxPublisher outboxPublisher;
     private final IMinioService minioService;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -39,14 +40,12 @@ public class CreateAuthorCommandHandler implements Command.CommandHandler<Create
     private boolean useSsl;
 
     @Override
-    @Transactional
     public AuthorResponse handle(CreateAuthorCommand cmd) {
         if (cmd.getName() == null || cmd.getName().isBlank()) {
             throw new BusinessValidationException(BookMessageConstants.AUTHOR_NAME_EMPTY,
                     BookMessageConstants.CODE_AUTHOR_NAME_EMPTY);
         }
 
-        UUID authorId = UUID.randomUUID();
         String avatarRelativePath = null;
 
         UploadFileModel avatarFile = cmd.getAvatarFile();
@@ -64,7 +63,7 @@ public class CreateAuthorCommandHandler implements Command.CommandHandler<Create
                     avatarFile.getFileName(),
                     avatarFile.getContentType());
 
-            String avatarObjectName = "author/" + authorId.toString() + "_avatar" + ext;
+            String avatarObjectName = "author/" + UUID.randomUUID() + "_avatar" + ext;
             try {
                 minioService.uploadFile(
                         resizedAvatar.getInputStream(),
@@ -75,40 +74,57 @@ public class CreateAuthorCommandHandler implements Command.CommandHandler<Create
                         null);
                 avatarRelativePath = avatarObjectName;
             } catch (Exception ex) {
-                log.error("Failed to upload author avatar to MinIO. Author ID: {}", authorId, ex);
+                log.error("Failed to upload author avatar to MinIO", ex);
                 throw new BusinessValidationException(BookMessageConstants.UPLOAD_FAILED + ex.getMessage(),
                         BookMessageConstants.CODE_UPLOAD_FAILED);
             }
         }
 
-        Author author = Author.builder()
-                .name(cmd.getName().trim())
-                .biography(cmd.getBiography() != null ? cmd.getBiography().trim() : null)
-                .avatar(avatarRelativePath)
-                .build();
-        author.setId(authorId);
+        final String finalAvatarRelativePath = avatarRelativePath;
 
-        author = authorRepository.save(author);
+        try {
+            return transactionTemplate.execute(status -> {
+                Author author = Author.builder()
+                        .name(cmd.getName().trim())
+                        .biography(cmd.getBiography() != null ? cmd.getBiography().trim() : null)
+                        .avatar(finalAvatarRelativePath)
+                        .build();
 
-        // Sync to Elasticsearch via Outbox
-        SyncAuthorMessage syncMsg = SyncAuthorMessage.builder()
-                .id(authorId)
-                .name(author.getName())
-                .biography(author.getBiography())
-                .avatarUrl(avatarRelativePath)
-                .isDeleted(false)
-                .build();
-        outboxPublisher.publish(
-                QueueConstants.SYNC_AUTHOR,
-                syncMsg,
-                "urn:message:InkPulse.Worker.Features.Book.Messages:SyncAuthorMessage");
-        log.info("Author sync message published to outbox. Author ID: {}", authorId);
+                Author savedAuthor = authorRepository.save(author);
+                UUID authorId = savedAuthor.getId();
 
-        return AuthorResponse.builder()
-                .id(authorId)
-                .name(author.getName())
-                .biography(author.getBiography())
-                .avatarUrl(UrlHelper.buildAbsoluteUrl(publicUrl, avatarRelativePath, useSsl))
-                .build();
+                // Sync to Elasticsearch via Outbox
+                SyncAuthorMessage syncMsg = SyncAuthorMessage.builder()
+                        .id(authorId)
+                        .name(savedAuthor.getName())
+                        .biography(savedAuthor.getBiography())
+                        .avatarUrl(finalAvatarRelativePath)
+                        .isDeleted(false)
+                        .build();
+                outboxPublisher.publish(
+                        QueueConstants.SYNC_AUTHOR,
+                        syncMsg,
+                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncAuthorMessage");
+                log.info("Author sync message published to outbox. Author ID: {}", authorId);
+
+                return AuthorResponse.builder()
+                        .id(authorId)
+                        .name(savedAuthor.getName())
+                        .biography(savedAuthor.getBiography())
+                        .avatarUrl(UrlHelper.buildAbsoluteUrl(publicUrl, finalAvatarRelativePath, useSsl))
+                        .build();
+            });
+        } catch (Exception ex) {
+            // Cleanup MinIO file if DB transaction failed
+            if (finalAvatarRelativePath != null) {
+                try {
+                    minioService.deleteFile(finalAvatarRelativePath);
+                    log.info("Cleaned up orphaned MinIO file: {}", finalAvatarRelativePath);
+                } catch (Exception cleanupEx) {
+                    log.warn("Failed to cleanup MinIO file after DB exception: {}", finalAvatarRelativePath, cleanupEx);
+                }
+            }
+            throw ex;
+        }
     }
 }

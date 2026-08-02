@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +47,7 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
     private final IMinioService minioService;
     private final ICacheService cacheService;
     private final CacheProperties cacheProperties;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -55,7 +56,6 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
     private boolean useSsl;
 
     @Override
-    @Transactional
     public AuthorResponse handle(UpdateAuthorCommand cmd) {
         if (cmd.getId() == null) {
             throw new ResourceNotFoundException(BookMessageConstants.SINGLE_AUTHOR_NOT_FOUND);
@@ -69,8 +69,7 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
                 .orElseThrow(() -> new ResourceNotFoundException(BookMessageConstants.SINGLE_AUTHOR_NOT_FOUND));
 
         String oldName = author.getName();
-        author.setName(cmd.getName().trim());
-        author.setBiography(cmd.getBiography() != null ? cmd.getBiography().trim() : null);
+        String newAvatarPath = null;
 
         UploadFileModel avatarFile = cmd.getAvatarFile();
         if (avatarFile != null && avatarFile.getInputStream() != null) {
@@ -87,7 +86,7 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
                     avatarFile.getFileName(),
                     avatarFile.getContentType());
 
-            String avatarObjectName = "author/" + author.getId().toString() + "_avatar" + ext;
+            String avatarObjectName = "author/" + author.getId().toString() + "_" + UUID.randomUUID() + "_avatar" + ext;
             try {
                 minioService.uploadFile(
                         resizedAvatar.getInputStream(),
@@ -96,7 +95,7 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
                         resizedAvatar.getFileSize(),
                         avatarObjectName,
                         null);
-                author.setAvatar(avatarObjectName);
+                newAvatarPath = avatarObjectName;
             } catch (Exception ex) {
                 log.error("Failed to upload updated author avatar to MinIO. Author ID: {}", author.getId(), ex);
                 throw new BusinessValidationException(BookMessageConstants.UPLOAD_FAILED + ex.getMessage(),
@@ -104,109 +103,131 @@ public class UpdateAuthorCommandHandler implements Command.CommandHandler<Update
             }
         }
 
-        author = authorRepository.save(author);
+        final String finalAvatarPath = newAvatarPath;
 
-        // Evict Cache
         try {
-            CacheProperties.SectionConfig section = cacheProperties.getSections()
-                    .get(KeyConstants.SECTION_AUTHOR_DETAIL);
-            if (section != null) {
-                String cacheKey = section.getKey() + author.getId().toString();
-                cacheService.remove(cacheKey);
-                log.info("Evicted author detail cache for ID: {}", author.getId());
-            }
-        } catch (Exception ex) {
-            log.error("Failed to evict author detail cache for ID: {}", author.getId(), ex);
-        }
+            return transactionTemplate.execute(status -> {
+                author.setName(cmd.getName().trim());
+                author.setBiography(cmd.getBiography() != null ? cmd.getBiography().trim() : null);
+                if (finalAvatarPath != null) {
+                    author.setAvatar(finalAvatarPath);
+                }
 
-        SyncAuthorMessage authorMsg = SyncAuthorMessage.builder()
-                .id(author.getId())
-                .name(author.getName())
-                .biography(author.getBiography())
-                .avatarUrl(author.getAvatar())
-                .isDeleted(false)
-                .build();
-        outboxPublisher.publish(
-                QueueConstants.SYNC_AUTHOR,
-                authorMsg,
-                "urn:message:InkPulse.Worker.Features.Book.Messages:SyncAuthorMessage");
-        log.info("Author updated sync message published to outbox. ID: {}", author.getId());
+                Author savedAuthor = authorRepository.save(author);
 
-        if (!oldName.equals(author.getName())) {
-            List<Book> books = bookRepository.findBooksByAuthorId(author.getId());
-            for (Book book : books) {
-                String authorNameJoined = book.getBookAuthors().stream()
-                        .filter(ba -> ba.isActive() && ba.getAuthor() != null)
-                        .map(ba -> ba.getAuthor().getName())
-                        .collect(Collectors.joining(", "));
-
-                for (BookEdition edition : book.getEditions()) {
-                    List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
-                    if (edition.getBadges() != null) {
-                        editionBadges = edition.getBadges().stream()
-                                .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
-                                .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
-                                        .text(eb.getBadge().getText())
-                                        .textColor(eb.getBadge().getTextColor())
-                                        .bgColor(eb.getBadge().getBgColor())
-                                        .build())
-                                .toList();
+                // Evict Cache
+                try {
+                    CacheProperties.SectionConfig section = cacheProperties.getSections()
+                            .get(KeyConstants.SECTION_AUTHOR_DETAIL);
+                    if (section != null) {
+                        String cacheKey = section.getKey() + savedAuthor.getId().toString();
+                        cacheService.remove(cacheKey);
+                        log.info("Evicted author detail cache for ID: {}", savedAuthor.getId());
                     }
+                } catch (Exception ex) {
+                    log.error("Failed to evict author detail cache for ID: {}", savedAuthor.getId(), ex);
+                }
 
-                    SyncBookEditionMessage edMsg = SyncBookEditionMessage.builder()
-                            .id(edition.getId())
-                            .bookId(book.getId())
-                            .title(book.getTitle())
-                            .introduce(book.getIntroduce())
-                            .description(book.getDescription())
-                            .bookThumbnailUrl(book.getThumbnailUrl())
-                            .isbn(edition.getIsbn())
-                            .price(edition.getPrice())
-                            .oldPrice(edition.getOldPrice())
-                            .stockQuantity(edition.getStockQuantity())
-                            .editionNumber(edition.getEditionNumber())
-                            .thumbnailUrl(edition.getThumbnailUrl())
-                            .filePathPdf(edition.getFilePathPdf())
-                            .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
-                            .pageCount(edition.getPageCount())
-                            .publicationYear(edition.getPublicationYear())
-                            .widthCm(edition.getWidthCm())
-                            .heightCm(edition.getHeightCm())
-                            .lengthCm(edition.getLengthCm())
-                            .weightGram(edition.getWeightGram())
-                            .language(edition.getLanguage())
-                            .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
-                            .authorName(authorNameJoined)
-                            .badgeText(book.getBadge() != null ? book.getBadge().getText() : null)
-                            .badgeTextColor(book.getBadge() != null ? book.getBadge().getTextColor() : null)
-                            .badgeBgColor(book.getBadge() != null ? book.getBadge().getBgColor() : null)
-                            .active(book.isActive())
-                            .deleted(book.isDeleted())
-                            .categorySlugs(book.getCategories().stream().map(Category::getSlug).toList())
-                            .imageUrls(edition.getImages().stream().map(EditionImage::getImageUrl).toList())
-                            .badges(editionBadges)
-                            .build();
+                SyncAuthorMessage authorMsg = SyncAuthorMessage.builder()
+                        .id(savedAuthor.getId())
+                        .name(savedAuthor.getName())
+                        .biography(savedAuthor.getBiography())
+                        .avatarUrl(savedAuthor.getAvatar())
+                        .isDeleted(false)
+                        .build();
+                outboxPublisher.publish(
+                        QueueConstants.SYNC_AUTHOR,
+                        authorMsg,
+                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncAuthorMessage");
+                log.info("Author updated sync message published to outbox. ID: {}", savedAuthor.getId());
 
-                    outboxPublisher.publish(
-                            QueueConstants.SYNC_BOOK_EDITION,
-                            edMsg,
-                            "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
+                if (!oldName.equals(savedAuthor.getName())) {
+                    List<Book> books = bookRepository.findBooksByAuthorId(savedAuthor.getId());
+                    for (Book book : books) {
+                        String authorNameJoined = book.getBookAuthors().stream()
+                                .filter(ba -> ba.isActive() && ba.getAuthor() != null)
+                                .map(ba -> ba.getAuthor().getName())
+                                .collect(Collectors.joining(", "));
+
+                        for (BookEdition edition : book.getEditions()) {
+                            List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
+                            if (edition.getBadges() != null) {
+                                editionBadges = edition.getBadges().stream()
+                                        .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
+                                        .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
+                                                .text(eb.getBadge().getText())
+                                                .textColor(eb.getBadge().getTextColor())
+                                                .bgColor(eb.getBadge().getBgColor())
+                                                .build())
+                                        .toList();
+                            }
+
+                            SyncBookEditionMessage edMsg = SyncBookEditionMessage.builder()
+                                    .id(edition.getId())
+                                    .bookId(book.getId())
+                                    .title(book.getTitle())
+                                    .introduce(book.getIntroduce())
+                                    .description(book.getDescription())
+                                    .bookThumbnailUrl(book.getThumbnailUrl())
+                                    .isbn(edition.getIsbn())
+                                    .price(edition.getPrice())
+                                    .oldPrice(edition.getOldPrice())
+                                    .stockQuantity(edition.getStockQuantity())
+                                    .editionNumber(edition.getEditionNumber())
+                                    .thumbnailUrl(edition.getThumbnailUrl())
+                                    .filePathPdf(edition.getFilePathPdf())
+                                    .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
+                                    .pageCount(edition.getPageCount())
+                                    .publicationYear(edition.getPublicationYear())
+                                    .widthCm(edition.getWidthCm())
+                                    .heightCm(edition.getHeightCm())
+                                    .lengthCm(edition.getLengthCm())
+                                    .weightGram(edition.getWeightGram())
+                                    .language(edition.getLanguage())
+                                    .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName() : null)
+                                    .authorName(authorNameJoined)
+                                    .badgeText(book.getBadge() != null ? book.getBadge().getText() : null)
+                                    .badgeTextColor(book.getBadge() != null ? book.getBadge().getTextColor() : null)
+                                    .badgeBgColor(book.getBadge() != null ? book.getBadge().getBgColor() : null)
+                                    .active(book.isActive())
+                                    .deleted(book.isDeleted())
+                                    .categorySlugs(book.getCategories().stream().map(Category::getSlug).toList())
+                                    .imageUrls(edition.getImages().stream().map(EditionImage::getImageUrl).toList())
+                                    .badges(editionBadges)
+                                    .build();
+
+                            outboxPublisher.publish(
+                                    QueueConstants.SYNC_BOOK_EDITION,
+                                    edMsg,
+                                    "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
+                        }
+                    }
+                    log.info(
+                            "Published outbox messages to propagate author name change to denormalized book editions. Author ID: {}",
+                            savedAuthor.getId());
+                }
+
+                // Invalidate author editions Redis Set
+                invalidateAuthorEditionsSet(savedAuthor.getId());
+
+                return AuthorResponse.builder()
+                        .id(savedAuthor.getId())
+                        .name(savedAuthor.getName())
+                        .biography(savedAuthor.getBiography())
+                        .avatarUrl(UrlHelper.buildAbsoluteUrl(publicUrl, savedAuthor.getAvatar(), useSsl))
+                        .build();
+            });
+        } catch (Exception ex) {
+            if (finalAvatarPath != null) {
+                try {
+                    minioService.deleteFile(finalAvatarPath);
+                    log.info("Cleaned up newly uploaded MinIO avatar file: {}", finalAvatarPath);
+                } catch (Exception cleanupEx) {
+                    log.warn("Failed to cleanup MinIO file after DB exception: {}", finalAvatarPath, cleanupEx);
                 }
             }
-            log.info(
-                    "Published outbox messages to propagate author name change to denormalized book editions. Author ID: {}",
-                    author.getId());
+            throw ex;
         }
-
-        // Invalidate author editions Redis Set
-        invalidateAuthorEditionsSet(author.getId());
-
-        return AuthorResponse.builder()
-                .id(author.getId())
-                .name(author.getName())
-                .biography(author.getBiography())
-                .avatarUrl(UrlHelper.buildAbsoluteUrl(publicUrl, author.getAvatar(), useSsl))
-                .build();
     }
 
     private void invalidateAuthorEditionsSet(UUID authorId) {

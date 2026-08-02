@@ -12,7 +12,6 @@ import com.inkpulse.corehelpers.exceptions.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Component
@@ -24,7 +23,6 @@ public class PrintOrderLabelHandler implements Command.CommandHandler<PrintOrder
     private final GhnSettings ghnSettings;
 
     @Override
-    @Transactional(readOnly = true)
     public PrintOrderLabelResponse handle(PrintOrderLabelCommand command) {
         log.info("Handling PrintOrderLabelCommand for orderCode: {} by admin: {}", command.getOrderCode(), command.getAdminUserId());
 

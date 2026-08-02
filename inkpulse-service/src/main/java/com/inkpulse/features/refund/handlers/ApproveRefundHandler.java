@@ -11,7 +11,7 @@ import com.inkpulse.service.payos.IPayOsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 import vn.payos.model.v1.payouts.PayoutRequests;
 import vn.payos.model.v1.payouts.Payout;
@@ -28,39 +28,40 @@ public class ApproveRefundHandler implements Command.CommandHandler<ApproveRefun
     private final RefundRequestRepository refundRequestRepository;
     private final UserRepository userRepository;
     private final IPayOsService payOsService;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
-    @Transactional
     public Void handle(ApproveRefundCommand command) {
         log.info("Handling ApproveRefundCommand for refund request: {} by admin: {}", 
                 command.getRefundRequestId(), command.getAdminUserId());
 
-        // 1. Fetch Refund Request
-        Optional<RefundRequest> refundOpt = refundRequestRepository.findById(command.getRefundRequestId());
-        if (refundOpt.isEmpty()) {
-            throw new BusinessValidationException("Không tìm thấy phiếu yêu cầu hoàn tiền!", "REFUND_NOT_FOUND");
-        }
+        // 1. Lock update status from PENDING to PROCESSING inside a short transaction
+        RefundRequest refund = transactionTemplate.execute(status -> {
+            Optional<RefundRequest> refundOpt = refundRequestRepository.findById(command.getRefundRequestId());
+            if (refundOpt.isEmpty()) {
+                throw new BusinessValidationException("Không tìm thấy phiếu yêu cầu hoàn tiền!", "REFUND_NOT_FOUND");
+            }
 
-        RefundRequest refund = refundOpt.get();
+            RefundRequest refundReq = refundOpt.get();
 
-        // 2. Perform step-lock update from PENDING to PROCESSING (allows PENDING or FAILED)
-        int affectedRows = refundRequestRepository.updateStatusSecurely(
-                refund.getId(),
-                RefundStatus.PENDING,
-                RefundStatus.PROCESSING,
-                LocalDateTime.now()
-        );
+            int affectedRows = refundRequestRepository.updateStatusSecurely(
+                    refundReq.getId(),
+                    RefundStatus.PENDING,
+                    RefundStatus.PROCESSING,
+                    LocalDateTime.now()
+            );
 
-        if (affectedRows == 0) {
-            log.warn("Refund request {} is already being processed or not in PENDING/FAILED state.", refund.getId());
-            throw new BusinessValidationException("Phiếu đang được xử lý bởi luồng khác!", "REFUND_ALREADY_PROCESSING");
-        }
+            if (affectedRows == 0) {
+                log.warn("Refund request {} is already being processed or not in PENDING/FAILED state.", refundReq.getId());
+                throw new BusinessValidationException("Phiếu đang được xử lý bởi luồng khác!", "REFUND_ALREADY_PROCESSING");
+            }
 
-        // Fetch User actor
-        Optional<User> adminOpt = userRepository.findById(UUID.fromString(command.getAdminUserId()));
-        refund.setApprovedBy(adminOpt.orElse(null));
+            Optional<User> adminOpt = userRepository.findById(UUID.fromString(command.getAdminUserId()));
+            refundReq.setApprovedBy(adminOpt.orElse(null));
+            return refundRequestRepository.save(refundReq);
+        });
 
-        // Try to automatically retrieve customer payment bank details from PayOS
+        // 2. Perform external PayOS REST API calls outside DB Transaction
         String accountNumber = command.getAccountNumber();
         String bin = command.getBin();
         String accountName = command.getAccountName();
@@ -68,7 +69,6 @@ public class ApproveRefundHandler implements Command.CommandHandler<ApproveRefun
         try {
             vn.payos.model.v2.paymentRequests.PaymentLink paymentLink = payOsService.getPaymentLinkInformation(Long.parseLong(refund.getOrder().getOrderCode()));
             if (paymentLink != null && paymentLink.getTransactions() != null && !paymentLink.getTransactions().isEmpty()) {
-                // Get the first transaction
                 vn.payos.model.v2.paymentRequests.Transaction tx = (vn.payos.model.v2.paymentRequests.Transaction) paymentLink.getTransactions().get(0);
                 if (tx.getCounterAccountNumber() != null && !tx.getCounterAccountNumber().trim().isEmpty()) {
                     accountNumber = tx.getCounterAccountNumber();
@@ -88,7 +88,6 @@ public class ApproveRefundHandler implements Command.CommandHandler<ApproveRefun
         }
 
         try {
-            // Build payout model for PayOS
             PayoutRequests payout = PayoutRequests.builder()
                     .referenceId(refund.getId().toString())
                     .amount(refund.getAmount().longValue())
@@ -98,22 +97,26 @@ public class ApproveRefundHandler implements Command.CommandHandler<ApproveRefun
                     .category(java.util.Collections.singletonList("Refund"))
                     .build();
 
-            // 3. Call PayOS API
+            // Call PayOS Payout REST API
             Payout result = payOsService.refundPayment(payout);
 
-            // 4. Update status to SUCCESS
-            refund.setStatus(RefundStatus.SUCCESS);
-            refund.setPayosRefundId(result.getReferenceId() != null ? result.getReferenceId() : refund.getId().toString());
-            refund.setErrorMessage(null);
-            refundRequestRepository.save(refund);
+            // Save SUCCESS status in dedicated transaction
+            transactionTemplate.executeWithoutResult(status -> {
+                refund.setStatus(RefundStatus.SUCCESS);
+                refund.setPayosRefundId(result.getReferenceId() != null ? result.getReferenceId() : refund.getId().toString());
+                refund.setErrorMessage(null);
+                refundRequestRepository.save(refund);
+            });
             log.info("Successfully refunded order {} via PayOS. Refund ID: {}", 
                     refund.getOrder().getOrderCode(), refund.getPayosRefundId());
         } catch (Exception ex) {
-            // 5. Update status to FAILED on exception/timeout
+            // Save FAILED status in dedicated transaction so exception doesn't revert status back to PENDING/PROCESSING
             log.error("Failed to process PayOS refund for request {}", refund.getId(), ex);
-            refund.setStatus(RefundStatus.FAILED);
-            refund.setErrorMessage(ex.getMessage());
-            refundRequestRepository.save(refund);
+            transactionTemplate.executeWithoutResult(status -> {
+                refund.setStatus(RefundStatus.FAILED);
+                refund.setErrorMessage(ex.getMessage());
+                refundRequestRepository.save(refund);
+            });
             throw new BusinessValidationException("Thanh toán hoàn tiền thất bại: " + ex.getMessage(), "PAYOS_REFUND_FAILED");
         }
 

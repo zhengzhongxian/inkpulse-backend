@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -43,6 +43,7 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
         private final OutboxPublisher outboxPublisher;
         private final ICacheService cacheService;
         private final CacheProperties cacheProperties;
+        private final TransactionTemplate transactionTemplate;
 
         @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
         private String publicUrl;
@@ -51,7 +52,6 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
         private boolean useSsl;
 
         @Override
-        @Transactional
         public BookResponse handle(UpdateBookCommand cmd) {
                 if (cmd.getId() == null) {
                         throw new ResourceNotFoundException(BookMessageConstants.BOOK_NOT_FOUND);
@@ -73,7 +73,6 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                                                         BookMessageConstants.BADGE_NOT_FOUND,
                                                         BookMessageConstants.CODE_BADGE_NOT_FOUND));
                 }
-                book.setBadge(badge);
 
                 // 2. Update Categories
                 Set<Category> categories = new HashSet<>();
@@ -85,9 +84,12 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                         }
                         categories.addAll(categoryList);
                 }
-                book.setCategories(categories);
 
-                // 3. Update Cover File if provided
+                String newRelativePath = null;
+                String newObjectName = null;
+                String oldObjectNameToDelete = null;
+
+                // 3. Update Cover File if provided (outside DB transaction)
                 if (cmd.getCoverFileStream() != null) {
                         // Validate image constraints (max 5MB)
                         ImageHelper.validateImage(
@@ -103,8 +105,8 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                         String ext = ".jpg";
                         String slugTitle = SlugHelper.toSlug(cmd.getTitle());
                         String uniqueSuffix = UUID.randomUUID().toString().substring(0, 8);
-                        String objectName = book.getId().toString() + "_" + slugTitle + "_" + uniqueSuffix + ext;
-                        String relativePath = "books/" + objectName;
+                        newObjectName = book.getId().toString() + "_" + slugTitle + "_" + uniqueSuffix + ext;
+                        newRelativePath = "books/" + newObjectName;
 
                         try {
                                 minioService.uploadFile(
@@ -112,204 +114,220 @@ public class UpdateBookCommandHandler implements Command.CommandHandler<UpdateBo
                                                 resizedFile.getFileName(),
                                                 resizedFile.getContentType(),
                                                 resizedFile.getFileSize(),
-                                                objectName,
+                                                newObjectName,
                                                 null);
-                                // Delete old cover image to prevent ghost cache and keep MinIO clean
                                 if (book.getThumbnailUrl() != null && !book.getThumbnailUrl().isBlank() && book.getThumbnailUrl().contains("/")) {
-                                        String oldObjectName = book.getThumbnailUrl().substring(book.getThumbnailUrl().lastIndexOf("/") + 1);
-                                        try {
-                                                minioService.deleteFile(oldObjectName);
-                                        } catch (Exception e) {
-                                                log.warn("Failed to delete old book cover file from MinIO: {}", oldObjectName, e);
-                                        }
+                                        oldObjectNameToDelete = book.getThumbnailUrl().substring(book.getThumbnailUrl().lastIndexOf("/") + 1);
                                 }
-                                book.setThumbnailUrl(relativePath);
                         } catch (Exception ex) {
-                                log.error("Failed to upload updated book cover to MinIO. Book ID: {}", book.getId(),
-                                                ex);
+                                log.error("Failed to upload updated book cover to MinIO. Book ID: {}", book.getId(), ex);
                                 throw new BusinessValidationException(
                                                 BookMessageConstants.UPLOAD_FAILED + ex.getMessage(),
                                                 BookMessageConstants.CODE_UPLOAD_FAILED);
                         }
-                } else if (!book.getTitle().equals(cmd.getTitle())) {
-                        // Title changed but cover not uploaded, rename object reference if necessary or
-                        // keep it.
-                        // Keeping same thumbnail url path is fine, but we can update title metadata
                 }
 
-                // 4. Update basic info
-                book.setTitle(cmd.getTitle());
-                book.setIntroduce(cmd.getIntroduce());
-                book.setDescription(cmd.getDescription());
+                final Badge finalBadge = badge;
+                final Set<Category> finalCategories = categories;
+                final String finalNewRelativePath = newRelativePath;
+                final String finalNewObjectName = newObjectName;
+                final String finalOldObjectNameToDelete = oldObjectNameToDelete;
 
-                if (cmd.getActive() != null) {
-                        if (cmd.getActive()) {
-                                long validEditionCount = book.getEditions() != null
-                                                ? book.getEditions().stream().filter(e -> !e.isDeleted()).count()
-                                                : 0;
-                                if (validEditionCount == 0) {
-                                        throw new BusinessValidationException(
-                                                        BookMessageConstants.BOOK_HAS_NO_EDITION,
-                                                        BookMessageConstants.CODE_BOOK_HAS_NO_EDITION);
+                try {
+                        return transactionTemplate.execute(status -> {
+                                book.setBadge(finalBadge);
+                                book.setCategories(finalCategories);
+                                if (finalNewRelativePath != null) {
+                                        book.setThumbnailUrl(finalNewRelativePath);
+                                }
+
+                                // 4. Update basic info
+                                book.setTitle(cmd.getTitle());
+                                book.setIntroduce(cmd.getIntroduce());
+                                book.setDescription(cmd.getDescription());
+
+                                if (cmd.getActive() != null) {
+                                        if (cmd.getActive()) {
+                                                long validEditionCount = book.getEditions() != null
+                                                                ? book.getEditions().stream().filter(e -> !e.isDeleted()).count()
+                                                                : 0;
+                                                if (validEditionCount == 0) {
+                                                        throw new BusinessValidationException(
+                                                                        BookMessageConstants.BOOK_HAS_NO_EDITION,
+                                                                        BookMessageConstants.CODE_BOOK_HAS_NO_EDITION);
+                                                }
+                                        }
+                                        book.setActive(cmd.getActive());
+                                }
+
+                                // 5. Update Authors association in-place
+                                Set<UUID> requestedAuthorIds = cmd.getAuthorIds() != null
+                                                ? new HashSet<>(cmd.getAuthorIds())
+                                                : new HashSet<>();
+
+                                Set<BookAuthor> existingBookAuthors = book.getBookAuthors();
+                                if (existingBookAuthors == null) {
+                                        existingBookAuthors = new HashSet<>();
+                                        book.setBookAuthors(existingBookAuthors);
+                                }
+
+                                existingBookAuthors.removeIf(ba -> !requestedAuthorIds.contains(ba.getAuthor().getId()));
+
+                                Set<UUID> currentAuthorIds = existingBookAuthors.stream()
+                                                .map(ba -> ba.getAuthor().getId())
+                                                .collect(Collectors.toSet());
+
+                                Set<UUID> newAuthorIds = requestedAuthorIds.stream()
+                                                .filter(id -> !currentAuthorIds.contains(id))
+                                                .collect(Collectors.toSet());
+
+                                List<String> authorNames = new ArrayList<>();
+                                for (BookAuthor ba : existingBookAuthors) {
+                                        authorNames.add(ba.getAuthor().getName());
+                                }
+
+                                if (!newAuthorIds.isEmpty()) {
+                                        List<Author> newAuthors = authorRepository.findAllById(newAuthorIds);
+                                        if (newAuthors.size() != newAuthorIds.size()) {
+                                                throw new BusinessValidationException(BookMessageConstants.AUTHOR_NOT_FOUND,
+                                                                BookMessageConstants.CODE_AUTHOR_NOT_FOUND);
+                                        }
+
+                                        for (Author author : newAuthors) {
+                                                BookAuthor bookAuthor = BookAuthor.builder()
+                                                                .book(book)
+                                                                .author(author)
+                                                                .active(true)
+                                                                .build();
+                                                existingBookAuthors.add(bookAuthor);
+                                                authorNames.add(author.getName());
+                                        }
+                                }
+
+                                Book savedBook = bookRepository.save(book);
+
+                                // Delete old cover file if new file was uploaded successfully
+                                if (finalOldObjectNameToDelete != null) {
+                                        try {
+                                                minioService.deleteFile(finalOldObjectNameToDelete);
+                                        } catch (Exception e) {
+                                                log.warn("Failed to delete old book cover file from MinIO: {}", finalOldObjectNameToDelete, e);
+                                        }
+                                }
+
+                                // 6. Notify ELS about book metadata changes for all of its editions
+                                String authorNameJoined = authorNames.stream().collect(Collectors.joining(", "));
+                                List<String> categorySlugs = finalCategories.stream().map(Category::getSlug).toList();
+
+                                for (BookEdition edition : savedBook.getEditions()) {
+                                        List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
+                                        if (edition.getBadges() != null) {
+                                                editionBadges = edition.getBadges().stream()
+                                                                .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
+                                                                .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
+                                                                                .text(eb.getBadge().getText())
+                                                                                .textColor(eb.getBadge().getTextColor())
+                                                                                .bgColor(eb.getBadge().getBgColor())
+                                                                                .build())
+                                                                .toList();
+                                        }
+
+                                        SyncBookEditionMessage edMsg = SyncBookEditionMessage.builder()
+                                                        .id(edition.getId())
+                                                        .bookId(savedBook.getId())
+                                                        .title(savedBook.getTitle())
+                                                        .introduce(savedBook.getIntroduce())
+                                                        .description(savedBook.getDescription())
+                                                        .bookThumbnailUrl(savedBook.getThumbnailUrl())
+                                                        .isbn(edition.getIsbn())
+                                                        .price(edition.getPrice())
+                                                        .oldPrice(edition.getOldPrice())
+                                                        .stockQuantity(edition.getStockQuantity())
+                                                        .editionNumber(edition.getEditionNumber())
+                                                        .thumbnailUrl(edition.getThumbnailUrl())
+                                                        .filePathPdf(edition.getFilePathPdf())
+                                                        .coverType(edition.getCoverType() != null ? edition.getCoverType().name()
+                                                                        : null)
+                                                        .pageCount(edition.getPageCount())
+                                                        .publicationYear(edition.getPublicationYear())
+                                                        .widthCm(edition.getWidthCm())
+                                                        .heightCm(edition.getHeightCm())
+                                                        .lengthCm(edition.getLengthCm())
+                                                        .weightGram(edition.getWeightGram())
+                                                        .language(edition.getLanguage())
+                                                        .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName()
+                                                                        : null)
+                                                        .authorName(authorNameJoined)
+                                                        .badgeText(finalBadge != null ? finalBadge.getText() : null)
+                                                        .badgeTextColor(finalBadge != null ? finalBadge.getTextColor() : null)
+                                                        .badgeBgColor(finalBadge != null ? finalBadge.getBgColor() : null)
+                                                        .active(savedBook.isActive())
+                                                        .deleted(savedBook.isDeleted() || edition.isDeleted())
+                                                        .categorySlugs(categorySlugs)
+                                                        .imageUrls(edition.getImages().stream().map(EditionImage::getImageUrl).toList())
+                                                        .badges(editionBadges)
+                                                        .build();
+
+                                        outboxPublisher.publish(
+                                                        QueueConstants.SYNC_BOOK_EDITION,
+                                                        edMsg,
+                                                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
+
+                                        // Evict edition detail cache
+                                        try {
+                                                cacheService.remove(cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL,
+                                                                edition.getId().toString()));
+                                        } catch (Exception ex) {
+                                                log.error("Failed to evict cache for edition ID: {}", edition.getId(), ex);
+                                        }
+                                }
+
+                                // Evict the Book ID fallback cache key explicitly
+                                try {
+                                        cacheService.remove(cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL,
+                                                        savedBook.getId().toString()));
+                                } catch (Exception ex) {
+                                        log.error("Failed to evict fallback cache for book ID: {}", savedBook.getId(), ex);
+                                }
+
+                                String scheme = useSsl ? "https" : "http";
+                                String cleanBaseUrl = publicUrl.replaceAll("^https?://", "").replaceAll("/+$", "");
+                                String absoluteThumbnailUrl = scheme + "://" + cleanBaseUrl + "/" + savedBook.getThumbnailUrl();
+
+                                BookEdition minEdition = savedBook.getEditions().stream()
+                                                .filter(e -> e.getPrice() != null)
+                                                .min(Comparator.comparing(BookEdition::getPrice))
+                                                .orElse(null);
+                                BigDecimal minPrice = minEdition != null ? minEdition.getPrice() : BigDecimal.ZERO;
+
+                                log.info("Book updated successfully. ID: {}, Title: {}", savedBook.getId(), savedBook.getTitle());
+
+                                return BookResponse.builder()
+                                                .id(savedBook.getId())
+                                                .title(savedBook.getTitle())
+                                                .introduce(savedBook.getIntroduce())
+                                                .thumbnailUrl(absoluteThumbnailUrl)
+                                                .badgeText(finalBadge != null ? finalBadge.getText() : null)
+                                                .badgeTextColor(finalBadge != null ? finalBadge.getTextColor() : null)
+                                                .badgeBgColor(finalBadge != null ? finalBadge.getBgColor() : null)
+                                                .minPrice(minPrice)
+                                                .priceDisplay(
+                                                                minPrice.compareTo(BigDecimal.ZERO) > 0
+                                                                                ? "chỉ từ " + BookResponse.formatVnd(minPrice)
+                                                                                : "")
+                                                .wasPriceDisplay("")
+                                                .authors(authorNames)
+                                                .build();
+                        });
+                } catch (Exception ex) {
+                        if (finalNewObjectName != null) {
+                                try {
+                                        minioService.deleteFile(finalNewObjectName);
+                                } catch (Exception cleanupEx) {
+                                        log.warn("Failed to cleanup new MinIO cover file: {}", finalNewObjectName, cleanupEx);
                                 }
                         }
-                        book.setActive(cmd.getActive());
+                        throw ex;
                 }
-
-                // 5. Update Authors association in-place (Diff-based sync to avoid duplicate
-                // key violations)
-                Set<UUID> requestedAuthorIds = cmd.getAuthorIds() != null
-                                ? new HashSet<>(cmd.getAuthorIds())
-                                : new HashSet<>();
-
-                Set<BookAuthor> existingBookAuthors = book.getBookAuthors();
-                if (existingBookAuthors == null) {
-                        existingBookAuthors = new HashSet<>();
-                        book.setBookAuthors(existingBookAuthors);
-                }
-
-                // Remove associations that are not in the requested list
-                existingBookAuthors.removeIf(ba -> !requestedAuthorIds.contains(ba.getAuthor().getId()));
-
-                // Get currently associated author IDs
-                Set<UUID> currentAuthorIds = existingBookAuthors.stream()
-                                .map(ba -> ba.getAuthor().getId())
-                                .collect(Collectors.toSet());
-
-                // Find new author IDs to be added
-                Set<UUID> newAuthorIds = requestedAuthorIds.stream()
-                                .filter(id -> !currentAuthorIds.contains(id))
-                                .collect(Collectors.toSet());
-
-                List<String> authorNames = new ArrayList<>();
-                // Collect names of existing authors that were kept
-                for (BookAuthor ba : existingBookAuthors) {
-                        authorNames.add(ba.getAuthor().getName());
-                }
-
-                if (!newAuthorIds.isEmpty()) {
-                        List<Author> newAuthors = authorRepository.findAllById(newAuthorIds);
-                        if (newAuthors.size() != newAuthorIds.size()) {
-                                throw new BusinessValidationException(BookMessageConstants.AUTHOR_NOT_FOUND,
-                                                BookMessageConstants.CODE_AUTHOR_NOT_FOUND);
-                        }
-
-                        for (Author author : newAuthors) {
-                                BookAuthor bookAuthor = BookAuthor.builder()
-                                                .book(book)
-                                                .author(author)
-                                                .active(true)
-                                                .build();
-                                existingBookAuthors.add(bookAuthor);
-                                authorNames.add(author.getName());
-                        }
-                }
-
-                book = bookRepository.save(book);
-
-                // 6. Notify ELS about book metadata changes for all of its editions
-                String authorNameJoined = authorNames.stream().collect(Collectors.joining(", "));
-                List<String> categorySlugs = categories.stream().map(Category::getSlug).toList();
-
-                for (BookEdition edition : book.getEditions()) {
-                        List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
-                        if (edition.getBadges() != null) {
-                                editionBadges = edition.getBadges().stream()
-                                                .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
-                                                .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
-                                                                .text(eb.getBadge().getText())
-                                                                .textColor(eb.getBadge().getTextColor())
-                                                                .bgColor(eb.getBadge().getBgColor())
-                                                                .build())
-                                                .toList();
-                        }
-
-                        SyncBookEditionMessage edMsg = SyncBookEditionMessage.builder()
-                                        .id(edition.getId())
-                                        .bookId(book.getId())
-                                        .title(book.getTitle())
-                                        .introduce(book.getIntroduce())
-                                        .description(book.getDescription())
-                                        .bookThumbnailUrl(book.getThumbnailUrl())
-                                        .isbn(edition.getIsbn())
-                                        .price(edition.getPrice())
-                                        .oldPrice(edition.getOldPrice())
-                                        .stockQuantity(edition.getStockQuantity())
-                                        .editionNumber(edition.getEditionNumber())
-                                        .thumbnailUrl(edition.getThumbnailUrl())
-                                        .filePathPdf(edition.getFilePathPdf())
-                                        .coverType(edition.getCoverType() != null ? edition.getCoverType().name()
-                                                        : null)
-                                        .pageCount(edition.getPageCount())
-                                        .publicationYear(edition.getPublicationYear())
-                                        .widthCm(edition.getWidthCm())
-                                        .heightCm(edition.getHeightCm())
-                                        .lengthCm(edition.getLengthCm())
-                                        .weightGram(edition.getWeightGram())
-                                        .language(edition.getLanguage())
-                                        .publisherName(edition.getPublisher() != null ? edition.getPublisher().getName()
-                                                        : null)
-                                        .authorName(authorNameJoined)
-                                        .badgeText(badge != null ? badge.getText() : null)
-                                        .badgeTextColor(badge != null ? badge.getTextColor() : null)
-                                        .badgeBgColor(badge != null ? badge.getBgColor() : null)
-                                        .active(book.isActive())
-                                        .deleted(book.isDeleted() || edition.isDeleted())
-                                        .categorySlugs(categorySlugs)
-                                        .imageUrls(edition.getImages().stream().map(EditionImage::getImageUrl).toList())
-                                        .badges(editionBadges)
-                                        .build();
-
-                        outboxPublisher.publish(
-                                        QueueConstants.SYNC_BOOK_EDITION,
-                                        edMsg,
-                                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
-
-                        // Evict edition detail cache
-                        try {
-                                cacheService.remove(cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL,
-                                                edition.getId().toString()));
-                        } catch (Exception ex) {
-                                log.error("Failed to evict cache for edition ID: {}", edition.getId(), ex);
-                        }
-                }
-
-                // Evict the Book ID fallback cache key explicitly
-                try {
-                        cacheService.remove(cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITION_DETAIL,
-                                        book.getId().toString()));
-                } catch (Exception ex) {
-                        log.error("Failed to evict fallback cache for book ID: {}", book.getId(), ex);
-                }
-
-                String scheme = useSsl ? "https" : "http";
-                String cleanBaseUrl = publicUrl.replaceAll("^https?://", "").replaceAll("/+$", "");
-                String absoluteThumbnailUrl = scheme + "://" + cleanBaseUrl + "/" + book.getThumbnailUrl();
-
-                // Calculate min price for response
-                BookEdition minEdition = book.getEditions().stream()
-                                .filter(e -> e.getPrice() != null)
-                                .min(Comparator.comparing(BookEdition::getPrice))
-                                .orElse(null);
-                BigDecimal minPrice = minEdition != null ? minEdition.getPrice() : BigDecimal.ZERO;
-
-                log.info("Book updated successfully. ID: {}, Title: {}", book.getId(), book.getTitle());
-
-                return BookResponse.builder()
-                                .id(book.getId())
-                                .title(book.getTitle())
-                                .introduce(book.getIntroduce())
-                                .thumbnailUrl(absoluteThumbnailUrl)
-                                .badgeText(badge != null ? badge.getText() : null)
-                                .badgeTextColor(badge != null ? badge.getTextColor() : null)
-                                .badgeBgColor(badge != null ? badge.getBgColor() : null)
-                                .minPrice(minPrice)
-                                .priceDisplay(
-                                                minPrice.compareTo(BigDecimal.ZERO) > 0
-                                                                ? "chỉ từ " + BookResponse.formatVnd(minPrice)
-                                                                : "")
-                                .wasPriceDisplay("")
-                                .authors(authorNames)
-                                .build();
         }
 }

@@ -14,7 +14,7 @@ import com.inkpulse.corehelpers.JsonHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.inkpulse.corehelpers.exceptions.BusinessValidationException;
 
 import java.util.Optional;
@@ -28,9 +28,9 @@ public class UpdateOrderShippingHandler implements Command.CommandHandler<Update
     private final OrderRepository orderRepository;
     private final IGhnShippingService ghnShippingService;
     private final OrderEventRepository orderEventRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
-    @Transactional
     public Void handle(UpdateOrderShippingCommand command) {
         log.info("Handling UpdateOrderShippingCommand for order: {}", command.getOrderCode());
 
@@ -51,7 +51,7 @@ public class UpdateOrderShippingHandler implements Command.CommandHandler<Update
             throw new BusinessValidationException(OrderMessageConstants.SHIPPING_UPDATE_NOT_PACKED, OrderMessageConstants.CODE_GHN_CODE_MISSING);
         }
 
-        // 3. Call GHN Update API directly
+        // 3. Call GHN Update API directly (outside DB Transaction)
         ghnShippingService.updateShippingOrder(
                 order.getGhnOrderCode(),
                 command.getNote(),
@@ -62,14 +62,16 @@ public class UpdateOrderShippingHandler implements Command.CommandHandler<Update
                 command.getHeight()
         );
 
-        // Save Order Event (Order Event Store)
-        OrderEvent orderEvent = OrderEvent.builder()
-                .order(order)
-                .eventType(OrderEventType.SHIPPING_UPDATED)
-                .eventData(JsonHelper.serializeSafe(command))
-                .createdBy(UUID.fromString(command.getAdminUserId()))
-                .build();
-        orderEventRepository.save(orderEvent);
+        // 4. Save Order Event in a short, dedicated DB transaction
+        transactionTemplate.executeWithoutResult(status -> {
+            OrderEvent orderEvent = OrderEvent.builder()
+                    .order(order)
+                    .eventType(OrderEventType.SHIPPING_UPDATED)
+                    .eventData(JsonHelper.serializeSafe(command))
+                    .createdBy(UUID.fromString(command.getAdminUserId()))
+                    .build();
+            orderEventRepository.save(orderEvent);
+        });
 
         log.info("Successfully updated order shipping information on GHN for order: {}", order.getOrderCode());
         return null;

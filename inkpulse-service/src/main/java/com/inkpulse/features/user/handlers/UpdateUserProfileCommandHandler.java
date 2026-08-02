@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import an.awesome.pipelinr.Pipeline;
 
 import java.time.LocalDateTime;
@@ -39,40 +39,20 @@ public class UpdateUserProfileCommandHandler implements Command.CommandHandler<U
     private final SectionCacheService sectionCache;
     private final TokenService tokenService;
     private final Pipeline pipeline;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${" + KeyConstants.MINIO_AVATAR_BUCKET_NAME + ":avatar}")
     private String avatarBucketName;
 
     @Override
-    @Transactional
     public UserProfileCacheDto handle(UpdateUserProfileCommand cmd) {
         User user = userRepository.findById(cmd.getUserId())
                 .orElseThrow(() -> new BusinessValidationException(UserMessageConstants.USER_NOT_FOUND, "USER_NOT_FOUND"));
 
-        UserProfile profile = user.getProfile();
-        if (profile == null) {
-            profile = UserProfile.builder().user(user).build();
-        }
+        String avatarRelativePath = null;
+        String avatarObjectName = null;
 
-        // 1. Update basic profile info
-        profile.setFirstName(cmd.getFirstName());
-        profile.setLastName(cmd.getLastName());
-        
-        String cleanFirst = cmd.getFirstName() != null ? cmd.getFirstName().trim() : "";
-        String cleanLast = cmd.getLastName() != null ? cmd.getLastName().trim() : "";
-        profile.setFullName((cleanFirst + " " + cleanLast).trim());
-        
-        if (cmd.getGender() != null) {
-            try {
-                profile.setGender(Gender.valueOf(cmd.getGender().toUpperCase()));
-            } catch (IllegalArgumentException e) {
-                profile.setGender(Gender.UNKNOWN);
-            }
-        }
-        profile.setDob(cmd.getDob());
-        profile.setBiography(cmd.getBiography());
-
-        // 2. Upload avatar to MinIO if provided
+        // 1. Upload avatar to MinIO if provided (outside DB transaction)
         if (cmd.getAvatarFile() != null) {
             try {
                 String avatarExt = ".jpg";
@@ -80,7 +60,7 @@ public class UpdateUserProfileCommandHandler implements Command.CommandHandler<U
                 if (originalName != null && originalName.lastIndexOf('.') != -1) {
                     avatarExt = originalName.substring(originalName.lastIndexOf('.'));
                 }
-                String objectName = "users/avatars/" + user.getId().toString() + avatarExt;
+                avatarObjectName = "users/avatars/" + user.getId().toString() + "_" + UUID.randomUUID() + avatarExt;
                 
                 // Upload to MinIO using custom avatar bucket
                 minioService.uploadFile(
@@ -88,76 +68,119 @@ public class UpdateUserProfileCommandHandler implements Command.CommandHandler<U
                         cmd.getAvatarFile().getFileName(),
                         cmd.getAvatarFile().getContentType(),
                         cmd.getAvatarFile().getFileSize(),
-                        objectName,
+                        avatarObjectName,
                         avatarBucketName,
                         null
                 );
                 
-                // Relative path in DB starts with "avatar/"
-                profile.setAvatarUrl("avatar/" + objectName);
+                avatarRelativePath = "avatar/" + avatarObjectName;
             } catch (Exception ex) {
                 log.error("Failed to upload avatar to MinIO. User ID: {}", user.getId(), ex);
                 throw new BusinessValidationException(UserMessageConstants.AVATAR_UPLOAD_FAILED + ex.getMessage(), "AVATAR_UPLOAD_FAILED");
             }
         }
-        userProfileRepository.save(profile);
 
-        // 3. Update settings
-        UserSetting setting = user.getSetting();
-        if (setting == null) {
-            setting = UserSetting.builder().user(user).build();
-        }
-        if (cmd.getDisplayMode() != null) {
-            try {
-                setting.setDisplayMode(DisplayMode.valueOf(cmd.getDisplayMode().toUpperCase()));
-            } catch (IllegalArgumentException ignored) {}
-        }
-        if (cmd.getChoiceLanguage() != null) {
-            try {
-                setting.setChoiceLanguage(Language.valueOf(cmd.getChoiceLanguage().toUpperCase()));
-            } catch (IllegalArgumentException ignored) {}
-        }
-        userSettingRepository.save(setting);
+        final String finalAvatarRelativePath = avatarRelativePath;
+        final String finalAvatarObjectName = avatarObjectName;
 
-        // 4. Update MFA Configs if provided in request
-        List<String> requestedMfaTypes = cmd.getMfaTypes();
-        if (requestedMfaTypes != null) {
-            List<MfaConfig> existingConfigs = mfaConfigRepository.findAllByUserId(cmd.getUserId());
-            mfaConfigRepository.deleteAll(existingConfigs);
+        try {
+            return transactionTemplate.execute(status -> {
+                UserProfile profile = user.getProfile();
+                if (profile == null) {
+                    profile = UserProfile.builder().user(user).build();
+                }
 
-            List<String> activeMfaTypes = requestedMfaTypes.stream()
-                    .filter(t -> t != null && !t.isBlank())
-                    .toList();
-
-            if (!activeMfaTypes.isEmpty()) {
-                boolean first = true;
-                for (String typeStr : activeMfaTypes) {
+                // Update basic profile info
+                profile.setFirstName(cmd.getFirstName());
+                profile.setLastName(cmd.getLastName());
+                
+                String cleanFirst = cmd.getFirstName() != null ? cmd.getFirstName().trim() : "";
+                String cleanLast = cmd.getLastName() != null ? cmd.getLastName().trim() : "";
+                profile.setFullName((cleanFirst + " " + cleanLast).trim());
+                
+                if (cmd.getGender() != null) {
                     try {
-                        MfaType mfaTypeEnum = MfaType.valueOf(typeStr.toUpperCase());
-                        MfaTypeLookup mfaTypeLookup = mfaTypeLookupRepository.findByTypeName(mfaTypeEnum)
-                                .orElseThrow(() -> new BusinessValidationException(UserMessageConstants.MFA_TYPE_NOT_FOUND + typeStr, "MFA_TYPE_NOT_FOUND"));
-                        
-                        MfaConfig newConfig = MfaConfig.builder()
-                                .user(user)
-                                .mfaType(mfaTypeLookup)
-                                .isDefault(first)
-                                .createdAt(LocalDateTime.now())
-                                .build();
-                        mfaConfigRepository.save(newConfig);
-                        first = false;
+                        profile.setGender(Gender.valueOf(cmd.getGender().toUpperCase()));
+                    } catch (IllegalArgumentException e) {
+                        profile.setGender(Gender.UNKNOWN);
+                    }
+                }
+                profile.setDob(cmd.getDob());
+                profile.setBiography(cmd.getBiography());
+
+                if (finalAvatarRelativePath != null) {
+                    profile.setAvatarUrl(finalAvatarRelativePath);
+                }
+                userProfileRepository.save(profile);
+
+                // Update settings
+                UserSetting setting = user.getSetting();
+                if (setting == null) {
+                    setting = UserSetting.builder().user(user).build();
+                }
+                if (cmd.getDisplayMode() != null) {
+                    try {
+                        setting.setDisplayMode(DisplayMode.valueOf(cmd.getDisplayMode().toUpperCase()));
                     } catch (IllegalArgumentException ignored) {}
                 }
-                user.setMfaEnabled(true);
-            } else {
-                user.setMfaEnabled(false);
+                if (cmd.getChoiceLanguage() != null) {
+                    try {
+                        setting.setChoiceLanguage(Language.valueOf(cmd.getChoiceLanguage().toUpperCase()));
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                userSettingRepository.save(setting);
+
+                // Update MFA Configs if provided in request
+                List<String> requestedMfaTypes = cmd.getMfaTypes();
+                if (requestedMfaTypes != null) {
+                    List<MfaConfig> existingConfigs = mfaConfigRepository.findAllByUserId(cmd.getUserId());
+                    mfaConfigRepository.deleteAll(existingConfigs);
+
+                    List<String> activeMfaTypes = requestedMfaTypes.stream()
+                            .filter(t -> t != null && !t.isBlank())
+                            .toList();
+
+                    if (!activeMfaTypes.isEmpty()) {
+                        boolean first = true;
+                        for (String typeStr : activeMfaTypes) {
+                            try {
+                                MfaType mfaTypeEnum = MfaType.valueOf(typeStr.toUpperCase());
+                                MfaTypeLookup mfaTypeLookup = mfaTypeLookupRepository.findByTypeName(mfaTypeEnum)
+                                        .orElseThrow(() -> new BusinessValidationException(UserMessageConstants.MFA_TYPE_NOT_FOUND + typeStr, "MFA_TYPE_NOT_FOUND"));
+                                
+                                MfaConfig newConfig = MfaConfig.builder()
+                                        .user(user)
+                                        .mfaType(mfaTypeLookup)
+                                        .isDefault(first)
+                                        .createdAt(LocalDateTime.now())
+                                        .build();
+                                mfaConfigRepository.save(newConfig);
+                                first = false;
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+                        user.setMfaEnabled(true);
+                    } else {
+                        user.setMfaEnabled(false);
+                    }
+                }
+
+                // Evict Cache
+                sectionCache.remove(user.getId().toString(), UserProfileCacheDto.class);
+                tokenService.removeUserSession(user.getId());
+
+                // Return fresh updated profile DTO
+                return pipeline.send(new GetUserProfileByUserIdQuery(user.getId()));
+            });
+        } catch (Exception ex) {
+            if (finalAvatarObjectName != null) {
+                try {
+                    minioService.deleteFile(finalAvatarObjectName);
+                    log.info("Cleaned up uploaded MinIO avatar: {}", finalAvatarObjectName);
+                } catch (Exception cleanupEx) {
+                    log.warn("Failed to cleanup MinIO avatar after DB exception: {}", finalAvatarObjectName, cleanupEx);
+                }
             }
+            throw ex;
         }
-
-        // 5. Evict Cache
-        sectionCache.remove(user.getId().toString(), UserProfileCacheDto.class);
-        tokenService.removeUserSession(user.getId());
-
-        // 6. Return fresh updated profile DTO
-        return pipeline.send(new GetUserProfileByUserIdQuery(user.getId()));
     }
 }

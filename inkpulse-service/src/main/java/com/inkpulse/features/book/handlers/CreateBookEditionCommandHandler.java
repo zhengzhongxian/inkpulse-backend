@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -51,6 +51,7 @@ public class CreateBookEditionCommandHandler
     private final CacheProperties cacheProperties;
     private final IAIVisionGrpcService aiVisionGrpcService;
     private final AIVisionRateLimiter aiVisionRateLimiter;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${" + KeyConstants.STORAGE_PUBLIC_URL + "}")
     private String publicUrl;
@@ -62,7 +63,6 @@ public class CreateBookEditionCommandHandler
     private boolean useSsl;
 
     @Override
-    @Transactional
     public BookEditionResponse handle(CreateBookEditionCommand cmd) {
         // 1. Validations
         if (cmd.getBookId() == null) {
@@ -213,279 +213,294 @@ public class CreateBookEditionCommandHandler
             }
         }
 
-        // 3. Update the cover path and pdf path and save again
-        edition.setThumbnailUrl(coverRelativePath);
-        edition.setFilePathPdf(pdfObjectName);
-        edition = bookEditionRepository.save(edition);
-
-        // Save Badges
-        Set<EditionBadge> edBadges = new HashSet<>();
-        if (cmd.getBadgeIds() != null && !cmd.getBadgeIds().isEmpty()) {
-            int order = 0;
-            // Deduplicate to prevent constraint violation
-            Set<UUID> uniqueBadgeIds = new java.util.LinkedHashSet<>(cmd.getBadgeIds());
-            for (UUID badgeId : uniqueBadgeIds) {
-                Badge badge = badgeRepository.findById(badgeId).orElse(null);
-                if (badge != null) {
-                    EditionBadge eb = EditionBadge.builder()
-                            .edition(edition)
-                            .badge(badge)
-                            .displayOrder(order++)
-                            .build();
-                    edBadges.add(eb);
-                }
-            }
-        }
-        edition.setBadges(edBadges);
-
-        // 5. Upload and Save Additional Gallery Images
-        List<String> imageRelativePaths = new ArrayList<>();
-        List<UploadFileModel> additionalImages = cmd.getAdditionalImages();
-        if (additionalImages != null && !additionalImages.isEmpty()) {
-            for (int i = 0; i < additionalImages.size(); i++) {
-                UploadFileModel imgFile = additionalImages.get(i);
-                if (imgFile == null || imgFile.getInputStream() == null)
-                    continue;
-
-                // Validate and resize gallery image to 400x400
-                ImageHelper.validateImage(
-                        imgFile.getContentType(),
-                        imgFile.getFileSize(),
-                        5 * 1024 * 1024L);
-                UploadFileModel resizedImgFile = ImageHelper.resizeTo400x400(
-                        imgFile.getInputStream(),
-                        imgFile.getFileName(),
-                        imgFile.getContentType());
-
-                String imgObjectName = "editions/images/" + editionId.toString() + "/img_" + i + "_" + slugTitle;
-                try {
-                    minioService.uploadFile(
-                            resizedImgFile.getInputStream(),
-                            resizedImgFile.getFileName(),
-                            resizedImgFile.getContentType(),
-                            resizedImgFile.getFileSize(),
-                            imgObjectName,
-                            null);
-                    imageRelativePaths.add("books/" + imgObjectName);
-
-                    EditionImage editionImage = EditionImage.builder()
-                            .edition(edition)
-                            .imageUrl("books/" + imgObjectName)
-                            .displayOrder(i)
-                            .build();
-                    edition.getImages().add(editionImage);
-                } catch (Exception ex) {
-                    log.error("Failed to upload additional edition image at index {}. Edition ID: {}", i, editionId,
-                            ex);
-                }
+        final String finalCoverObjectName = coverFile != null ? "editions/covers/" + editionId.toString() + "_" + slugTitle + ".jpg" : null;
+        final String finalPdfPath = pdfFile != null ? "editions/pdfs/" + editionId.toString() + "_" + slugTitle + ".pdf" : null;
+        final List<String> uploadedGalleryObjectNames = new ArrayList<>();
+        if (cmd.getAdditionalImages() != null && !cmd.getAdditionalImages().isEmpty()) {
+            for (int i = 0; i < cmd.getAdditionalImages().size(); i++) {
+                uploadedGalleryObjectNames.add("editions/images/" + editionId.toString() + "/img_" + i + "_" + slugTitle);
             }
         }
 
-        // 6. Index denormalized data to Elasticsearch (inkpulse_books)
-        String authorNameJoined = "";
-        if (book.getBookAuthors() != null) {
-            authorNameJoined = book.getBookAuthors().stream()
-                    .filter(ba -> ba.isActive() && ba.getAuthor() != null)
-                    .map(ba -> ba.getAuthor().getName())
-                    .collect(Collectors.joining(", "));
-        }
-
-        List<String> categorySlugs = new ArrayList<>();
-        if (book.getCategories() != null) {
-            categorySlugs = book.getCategories().stream()
-                    .map(Category::getSlug)
-                    .toList();
-        }
-
-        String badgeText = book.getBadge() != null ? book.getBadge().getText() : null;
-        String badgeTextColor = book.getBadge() != null ? book.getBadge().getTextColor() : null;
-        String badgeBgColor = book.getBadge() != null ? book.getBadge().getBgColor() : null;
-
-        List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
-        if (edition.getBadges() != null) {
-            editionBadges = edition.getBadges().stream()
-                    .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
-                    .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
-                            .text(eb.getBadge().getText())
-                            .textColor(eb.getBadge().getTextColor())
-                            .bgColor(eb.getBadge().getBgColor())
-                            .shape(eb.getBadge().getShape())
-                            .build())
-                    .toList();
-        }
-
-        List<UUID> authorIds = new ArrayList<>();
-        if (book.getBookAuthors() != null) {
-            authorIds = book.getBookAuthors().stream()
-                    .filter(ba -> ba.isActive() && ba.getAuthor() != null)
-                    .map(ba -> ba.getAuthor().getId())
-                    .toList();
-        }
-
-        List<UUID> badgeIds = new ArrayList<>();
-        if (edition.getBadges() != null) {
-            badgeIds = edition.getBadges().stream()
-                    .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
-                    .map(eb -> eb.getBadge().getId())
-                    .toList();
-        }
-
-        SyncBookEditionMessage syncMsg = SyncBookEditionMessage.builder()
-                .id(editionId)
-                .bookId(book.getId())
-                .title(book.getTitle())
-                .introduce(book.getIntroduce())
-                .description(book.getDescription())
-                .bookThumbnailUrl(book.getThumbnailUrl())
-                .isbn(edition.getIsbn())
-                .price(edition.getPrice())
-                .oldPrice(edition.getOldPrice())
-                .stockQuantity(edition.getStockQuantity())
-                .editionNumber(edition.getEditionNumber())
-                .thumbnailUrl(coverRelativePath)
-                .filePathPdf(edition.getFilePathPdf())
-                .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
-                .pageCount(edition.getPageCount())
-                .publicationYear(edition.getPublicationYear())
-                .widthCm(edition.getWidthCm())
-                .heightCm(edition.getHeightCm())
-                .lengthCm(edition.getLengthCm())
-                .weightGram(edition.getWeightGram())
-                .language(edition.getLanguage())
-                .publisherName(publisher != null ? publisher.getName() : null)
-                .authorName(authorNameJoined)
-                .badgeText(badgeText)
-                .badgeTextColor(badgeTextColor)
-                .badgeBgColor(badgeBgColor)
-                .active(book.isActive())
-                .deleted(book.isDeleted())
-                .categorySlugs(categorySlugs)
-                .imageUrls(imageRelativePaths)
-                .badges(editionBadges)
-                .publisherId(publisher != null ? publisher.getId() : null)
-                .authorIds(authorIds)
-                .badgeIds(badgeIds)
-                .soldCount(edition.getSoldCount())
-                .build();
-
-        outboxPublisher.publish(
-                QueueConstants.SYNC_BOOK_EDITION,
-                syncMsg,
-                "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
-        log.info("BookEdition sync message published to outbox. Edition ID: {}", editionId);
-
-        // Evict sister editions cache in Redis using the Redis Set
         try {
-            CacheProperties.SectionConfig detailSection = cacheProperties.getSections()
-                    .get(KeyConstants.SECTION_BOOK_EDITION_DETAIL);
-            if (detailSection != null) {
-                // Clear the new edition's cache key explicitly
-                cacheService.remove(detailSection.getKey() + editionId.toString());
-                // Clear the Book ID fallback cache key explicitly
-                cacheService.remove(detailSection.getKey() + book.getId().toString());
+            final String finalCoverRelativePath = coverRelativePath;
+            final String finalPdfObjectName = pdfObjectName;
 
-                String bookSetKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITIONS,
-                        book.getId().toString());
-                Set<String> editionIds = cacheService.smembers(bookSetKey);
-                if (editionIds != null && !editionIds.isEmpty()) {
-                    for (String edId : editionIds) {
-                        try {
-                            cacheService.remove(detailSection.getKey() + edId);
-                        } catch (Exception ex) {
-                            log.error("Failed to evict edition detail cache for ID: {}", edId, ex);
+            return transactionTemplate.execute(status -> {
+                edition.setThumbnailUrl(finalCoverRelativePath);
+                edition.setFilePathPdf(finalPdfObjectName);
+                BookEdition savedEdition = bookEditionRepository.save(edition);
+
+                Set<EditionBadge> edBadges = new HashSet<>();
+                if (cmd.getBadgeIds() != null && !cmd.getBadgeIds().isEmpty()) {
+                    int order = 0;
+                    Set<UUID> uniqueBadgeIds = new java.util.LinkedHashSet<>(cmd.getBadgeIds());
+                    for (UUID badgeId : uniqueBadgeIds) {
+                        Badge badge = badgeRepository.findById(badgeId).orElse(null);
+                        if (badge != null) {
+                            EditionBadge eb = EditionBadge.builder()
+                                    .edition(savedEdition)
+                                    .badge(badge)
+                                    .displayOrder(order++)
+                                    .build();
+                            edBadges.add(eb);
                         }
                     }
                 }
-                cacheService.remove(bookSetKey);
-            }
-            log.info("Evicted Redis cache key for sister editions of Book ID: {} using Redis Set", book.getId());
+                savedEdition.setBadges(edBadges);
 
-            // Directly populate newly created BookEdition detail into Redis cache
-            if (detailSection != null) {
-                java.time.Duration cacheTtl = java.time.Duration.ofMinutes(detailSection.getTtl());
-                String cacheKey = detailSection.getKey() + editionId.toString();
-                
-                PublicBookEditionDetailResponse detailCacheObj = PublicBookEditionDetailResponse.builder()
+                List<String> imageRelativePaths = new ArrayList<>();
+                List<UploadFileModel> additionalImages = cmd.getAdditionalImages();
+                if (additionalImages != null && !additionalImages.isEmpty()) {
+                    for (int i = 0; i < additionalImages.size(); i++) {
+                        UploadFileModel imgFile = additionalImages.get(i);
+                        if (imgFile == null || imgFile.getInputStream() == null)
+                            continue;
+
+                        ImageHelper.validateImage(
+                                imgFile.getContentType(),
+                                imgFile.getFileSize(),
+                                5 * 1024 * 1024L);
+                        UploadFileModel resizedImgFile = ImageHelper.resizeTo400x400(
+                                imgFile.getInputStream(),
+                                imgFile.getFileName(),
+                                imgFile.getContentType());
+
+                        String imgObjectName = "editions/images/" + editionId.toString() + "/img_" + i + "_" + slugTitle;
+                        try {
+                            minioService.uploadFile(
+                                    resizedImgFile.getInputStream(),
+                                    resizedImgFile.getFileName(),
+                                    resizedImgFile.getContentType(),
+                                    resizedImgFile.getFileSize(),
+                                    imgObjectName,
+                                    null);
+                            imageRelativePaths.add("books/" + imgObjectName);
+
+                            EditionImage editionImage = EditionImage.builder()
+                                    .edition(savedEdition)
+                                    .imageUrl("books/" + imgObjectName)
+                                    .displayOrder(i)
+                                    .build();
+                            savedEdition.getImages().add(editionImage);
+                        } catch (Exception ex) {
+                            log.error("Failed to upload additional edition image at index {}. Edition ID: {}", i, editionId, ex);
+                        }
+                    }
+                }
+
+                String authorNameJoined = "";
+                if (book.getBookAuthors() != null) {
+                    authorNameJoined = book.getBookAuthors().stream()
+                            .filter(ba -> ba.isActive() && ba.getAuthor() != null)
+                            .map(ba -> ba.getAuthor().getName())
+                            .collect(Collectors.joining(", "));
+                }
+
+                List<String> categorySlugs = new ArrayList<>();
+                if (book.getCategories() != null) {
+                    categorySlugs = book.getCategories().stream()
+                            .map(Category::getSlug)
+                            .toList();
+                }
+
+                String badgeText = book.getBadge() != null ? book.getBadge().getText() : null;
+                String badgeTextColor = book.getBadge() != null ? book.getBadge().getTextColor() : null;
+                String badgeBgColor = book.getBadge() != null ? book.getBadge().getBgColor() : null;
+
+                List<SyncBookEditionMessage.BadgeInfo> editionBadges = new ArrayList<>();
+                if (savedEdition.getBadges() != null) {
+                    editionBadges = savedEdition.getBadges().stream()
+                            .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
+                            .map(eb -> SyncBookEditionMessage.BadgeInfo.builder()
+                                    .text(eb.getBadge().getText())
+                                    .textColor(eb.getBadge().getTextColor())
+                                    .bgColor(eb.getBadge().getBgColor())
+                                    .shape(eb.getBadge().getShape())
+                                    .build())
+                            .toList();
+                }
+
+                List<UUID> authorIds = new ArrayList<>();
+                if (book.getBookAuthors() != null) {
+                    authorIds = book.getBookAuthors().stream()
+                            .filter(ba -> ba.isActive() && ba.getAuthor() != null)
+                            .map(ba -> ba.getAuthor().getId())
+                            .toList();
+                }
+
+                List<UUID> badgeIds = new ArrayList<>();
+                if (savedEdition.getBadges() != null) {
+                    badgeIds = savedEdition.getBadges().stream()
+                            .filter(eb -> eb.getBadge() != null && !eb.isDeleted())
+                            .map(eb -> eb.getBadge().getId())
+                            .toList();
+                }
+
+                SyncBookEditionMessage syncMsg = SyncBookEditionMessage.builder()
                         .id(editionId)
-                        .isbn(edition.getIsbn())
-                        .price(edition.getPrice())
-                        .oldPrice(edition.getOldPrice())
-                        .priceDisplay(BookEditionResponse.formatVnd(edition.getPrice()))
-                        .oldPriceDisplay(BookEditionResponse.formatVnd(edition.getOldPrice()))
-                        .stockQuantity(edition.getStockQuantity())
-                        .stockStatus(edition.getStockQuantity() >= 10 ? "Còn hàng" : (edition.getStockQuantity() > 0 ? "Chỉ còn " + edition.getStockQuantity() + " cuốn" : "Tạm hết hàng"))
-                        .editionNumber(edition.getEditionNumber())
-                        .soldCount(edition.getSoldCount())
-                        .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, coverRelativePath, useSsl))
-                        .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
-                        .pageCount(edition.getPageCount())
-                        .publicationYear(edition.getPublicationYear())
-                        .weightGram(edition.getWeightGram())
-                        .widthCm(edition.getWidthCm())
-                        .heightCm(edition.getHeightCm())
-                        .lengthCm(edition.getLengthCm())
-                        .language(edition.getLanguage())
-                        .publisherName(publisher != null ? publisher.getName() : null)
-                        .imageUrls(imageRelativePaths.stream().map(p -> UrlHelper.buildAbsoluteUrl(publicUrl, p, useSsl)).toList())
                         .bookId(book.getId())
-                        .bookTitle(book.getTitle())
-                        .bookThumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, book.getThumbnailUrl(), useSsl))
+                        .title(book.getTitle())
                         .introduce(book.getIntroduce())
                         .description(book.getDescription())
+                        .bookThumbnailUrl(book.getThumbnailUrl())
+                        .isbn(savedEdition.getIsbn())
+                        .price(savedEdition.getPrice())
+                        .oldPrice(savedEdition.getOldPrice())
+                        .stockQuantity(savedEdition.getStockQuantity())
+                        .editionNumber(savedEdition.getEditionNumber())
+                        .thumbnailUrl(finalCoverRelativePath)
+                        .filePathPdf(savedEdition.getFilePathPdf())
+                        .coverType(savedEdition.getCoverType() != null ? savedEdition.getCoverType().name() : null)
+                        .pageCount(savedEdition.getPageCount())
+                        .publicationYear(savedEdition.getPublicationYear())
+                        .widthCm(savedEdition.getWidthCm())
+                        .heightCm(savedEdition.getHeightCm())
+                        .lengthCm(savedEdition.getLengthCm())
+                        .weightGram(savedEdition.getWeightGram())
+                        .language(savedEdition.getLanguage())
+                        .publisherName(publisher != null ? publisher.getName() : null)
                         .authorName(authorNameJoined)
                         .badgeText(badgeText)
                         .badgeTextColor(badgeTextColor)
                         .badgeBgColor(badgeBgColor)
+                        .active(book.isActive())
+                        .deleted(book.isDeleted())
                         .categorySlugs(categorySlugs)
-                        .isFlashSale(false)
-                        .flashSaleItemId(null)
+                        .imageUrls(imageRelativePaths)
+                        .badges(editionBadges)
+                        .publisherId(publisher != null ? publisher.getId() : null)
+                        .authorIds(authorIds)
+                        .badgeIds(badgeIds)
+                        .soldCount(savedEdition.getSoldCount())
                         .build();
 
-                cacheService.set(cacheKey, detailCacheObj, cacheTtl);
+                outboxPublisher.publish(
+                        QueueConstants.SYNC_BOOK_EDITION,
+                        syncMsg,
+                        "urn:message:InkPulse.Worker.Features.Book.Messages:SyncBookEditionMessage");
+                log.info("BookEdition sync message published to outbox. Edition ID: {}", editionId);
 
-                String bookSetKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITIONS, book.getId().toString());
-                cacheService.sadd(bookSetKey, cacheTtl, editionId.toString());
-                log.info("Cached newly created BookEdition detail in Redis. Key: {}", cacheKey);
+                try {
+                    CacheProperties.SectionConfig detailSection = cacheProperties.getSections()
+                            .get(KeyConstants.SECTION_BOOK_EDITION_DETAIL);
+                    if (detailSection != null) {
+                        cacheService.remove(detailSection.getKey() + editionId.toString());
+                        cacheService.remove(detailSection.getKey() + book.getId().toString());
+
+                        String bookSetKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITIONS,
+                                book.getId().toString());
+                        Set<String> editionIds = cacheService.smembers(bookSetKey);
+                        if (editionIds != null && !editionIds.isEmpty()) {
+                            for (String edId : editionIds) {
+                                try {
+                                    cacheService.remove(detailSection.getKey() + edId);
+                                } catch (Exception ex) {
+                                    log.error("Failed to evict edition detail cache for ID: {}", edId, ex);
+                                }
+                            }
+                        }
+                        cacheService.remove(bookSetKey);
+                    }
+                    log.info("Evicted Redis cache key for sister editions of Book ID: {} using Redis Set", book.getId());
+
+                    if (detailSection != null) {
+                        java.time.Duration cacheTtl = java.time.Duration.ofMinutes(detailSection.getTtl());
+                        String cacheKey = detailSection.getKey() + editionId.toString();
+                        
+                        PublicBookEditionDetailResponse detailCacheObj = PublicBookEditionDetailResponse.builder()
+                                .id(editionId)
+                                .isbn(savedEdition.getIsbn())
+                                .price(savedEdition.getPrice())
+                                .oldPrice(savedEdition.getOldPrice())
+                                .priceDisplay(BookEditionResponse.formatVnd(savedEdition.getPrice()))
+                                .oldPriceDisplay(BookEditionResponse.formatVnd(savedEdition.getOldPrice()))
+                                .stockQuantity(savedEdition.getStockQuantity())
+                                .stockStatus(savedEdition.getStockQuantity() >= 10 ? "Còn hàng" : (savedEdition.getStockQuantity() > 0 ? "Chỉ còn " + savedEdition.getStockQuantity() + " cuốn" : "Tạm hết hàng"))
+                                .editionNumber(savedEdition.getEditionNumber())
+                                .soldCount(savedEdition.getSoldCount())
+                                .thumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, finalCoverRelativePath, useSsl))
+                                .coverType(savedEdition.getCoverType() != null ? savedEdition.getCoverType().name() : null)
+                                .pageCount(savedEdition.getPageCount())
+                                .publicationYear(savedEdition.getPublicationYear())
+                                .weightGram(savedEdition.getWeightGram())
+                                .widthCm(savedEdition.getWidthCm())
+                                .heightCm(savedEdition.getHeightCm())
+                                .lengthCm(savedEdition.getLengthCm())
+                                .language(savedEdition.getLanguage())
+                                .publisherName(publisher != null ? publisher.getName() : null)
+                                .imageUrls(imageRelativePaths.stream().map(p -> UrlHelper.buildAbsoluteUrl(publicUrl, p, useSsl)).toList())
+                                .bookId(book.getId())
+                                .bookTitle(book.getTitle())
+                                .bookThumbnailUrl(UrlHelper.buildAbsoluteUrl(publicUrl, book.getThumbnailUrl(), useSsl))
+                                .introduce(book.getIntroduce())
+                                .description(book.getDescription())
+                                .authorName(authorNameJoined)
+                                .badgeText(badgeText)
+                                .badgeTextColor(badgeTextColor)
+                                .badgeBgColor(badgeBgColor)
+                                .categorySlugs(categorySlugs)
+                                .isFlashSale(false)
+                                .flashSaleItemId(null)
+                                .build();
+
+                        cacheService.set(cacheKey, detailCacheObj, cacheTtl);
+
+                        String bookSetKey = cacheProperties.buildKey(KeyConstants.SECTION_BOOK_EDITIONS, book.getId().toString());
+                        cacheService.sadd(bookSetKey, cacheTtl, editionId.toString());
+                        log.info("Cached newly created BookEdition detail in Redis. Key: {}", cacheKey);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to evict/populate Redis cache key for Book ID: {}", book.getId(), e);
+                }
+
+                String absoluteThumbnailUrl = UrlHelper.buildAbsoluteUrl(publicUrl, finalCoverRelativePath, useSsl);
+                String absolutePdfUrl = UrlHelper.buildAbsoluteUrl(pdfPublicUrl, finalPdfObjectName, useSsl);
+                List<String> absoluteImageUrls = imageRelativePaths.stream()
+                        .map(path -> UrlHelper.buildAbsoluteUrl(publicUrl, path, useSsl))
+                        .toList();
+
+                return BookEditionResponse.builder()
+                        .id(editionId)
+                        .bookId(book.getId())
+                        .bookTitle(book.getTitle())
+                        .isbn(savedEdition.getIsbn())
+                        .price(savedEdition.getPrice())
+                        .oldPrice(savedEdition.getOldPrice())
+                        .priceDisplay(BookEditionResponse.formatVnd(savedEdition.getPrice()))
+                        .oldPriceDisplay(BookEditionResponse.formatVnd(savedEdition.getOldPrice()))
+                        .stockQuantity(savedEdition.getStockQuantity())
+                        .editionNumber(savedEdition.getEditionNumber())
+                        .thumbnailUrl(absoluteThumbnailUrl)
+                        .imageUrls(absoluteImageUrls)
+                        .filePathPdf(savedEdition.getFilePathPdf())
+                        .filePathPdfUrl(absolutePdfUrl)
+                        .soldCount(savedEdition.getSoldCount())
+                        .ratingsCount(savedEdition.getRatingsCount())
+                        .rating(savedEdition.getRating())
+                        .coverType(savedEdition.getCoverType() != null ? savedEdition.getCoverType().name() : null)
+                        .pageCount(savedEdition.getPageCount())
+                        .publicationYear(savedEdition.getPublicationYear())
+                        .widthCm(savedEdition.getWidthCm())
+                        .heightCm(savedEdition.getHeightCm())
+                        .lengthCm(savedEdition.getLengthCm())
+                        .weightGram(savedEdition.getWeightGram())
+                        .language(savedEdition.getLanguage())
+                        .publisherName(publisher != null ? publisher.getName() : null)
+                        .build();
+            });
+        } catch (Exception ex) {
+            // Compensating Cleanup: delete any uploaded files from MinIO if DB transaction failed
+            if (finalCoverObjectName != null) {
+                try { minioService.deleteFile(finalCoverObjectName); } catch (Exception ignored) {}
             }
-        } catch (Exception e) {
-            log.error("Failed to evict/populate Redis cache key for Book ID: {}", book.getId(), e);
+            if (finalPdfPath != null) {
+                try { minioService.deleteFile(finalPdfPath); } catch (Exception ignored) {}
+            }
+            for (String imgName : uploadedGalleryObjectNames) {
+                try { minioService.deleteFile(imgName); } catch (Exception ignored) {}
+            }
+            throw ex;
         }
-
-        String absoluteThumbnailUrl = UrlHelper.buildAbsoluteUrl(publicUrl, coverRelativePath, useSsl);
-        String absolutePdfUrl = UrlHelper.buildAbsoluteUrl(pdfPublicUrl, pdfObjectName, useSsl);
-        List<String> absoluteImageUrls = imageRelativePaths.stream()
-                .map(path -> UrlHelper.buildAbsoluteUrl(publicUrl, path, useSsl))
-                .toList();
-
-        log.info("BookEdition created successfully. ID: {}, ISBN: {}", editionId, edition.getIsbn());
-
-        return BookEditionResponse.builder()
-                .id(editionId)
-                .bookId(book.getId())
-                .bookTitle(book.getTitle())
-                .isbn(edition.getIsbn())
-                .price(edition.getPrice())
-                .oldPrice(edition.getOldPrice())
-                .priceDisplay(BookEditionResponse.formatVnd(edition.getPrice()))
-                .oldPriceDisplay(BookEditionResponse.formatVnd(edition.getOldPrice()))
-                .stockQuantity(edition.getStockQuantity())
-                .editionNumber(edition.getEditionNumber())
-                .thumbnailUrl(absoluteThumbnailUrl)
-                .imageUrls(absoluteImageUrls)
-                .filePathPdf(edition.getFilePathPdf())
-                .filePathPdfUrl(absolutePdfUrl)
-                .soldCount(edition.getSoldCount())
-                .ratingsCount(edition.getRatingsCount())
-                .rating(edition.getRating())
-                .coverType(edition.getCoverType() != null ? edition.getCoverType().name() : null)
-                .pageCount(edition.getPageCount())
-                .publicationYear(edition.getPublicationYear())
-                .widthCm(edition.getWidthCm())
-                .heightCm(edition.getHeightCm())
-                .lengthCm(edition.getLengthCm())
-                .weightGram(edition.getWeightGram())
-                .language(edition.getLanguage())
-                .publisherName(publisher != null ? publisher.getName() : null)
-                .build();
     }
 }
